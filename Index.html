@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Widget Demo</title>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(180deg, #f3f5f8 0%, #e3e8ef 100%);
+    }
+
+    h1 {
+      color: #0b1b3a;
+      margin-bottom: 0.5rem;
+    }
+
+    p {
+      color: #5c6370;
+      max-width: 500px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    footer {
+      position: absolute;
+      bottom: 1rem;
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+
+    footer a {
+      color: #0b5fff;
+      text-decoration: none;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Welcome to My Demo Page</h1>
+  <p>
+    This page shows how the embedded <strong>n8n + OpenAI chat widget</strong>
+    can be added to any website. Click the 💬 icon in the bottom-right corner
+    to start chatting.
+  </p>
+
+  <footer>
+    Chat powered by <a href="https://n8n.io" target="_blank">n8n</a> + OpenAI
+  </footer>
+
+  <!-- ✅ Add this script once at the bottom -->
+  <script
+    src="./chat-widget.js"
+    data-endpoint="https://alisamir82.app.n8n.cloud/webhook/b7763ad9-4bba-429f-83f1-8867ad816b18"
+    data-title="Support Assistant"
+    data-primary="#0b5fff"
+    data-accent="#e8f0ff"
+    data-position="bottom-right"
+    data-start-open="false"
+    data-placeholder="Ask me anything..."
+    defer
+  ></script>
+</body>
+</html>
