@@ -238,14 +238,13 @@
         transform:translateY(-1px);
       }
 
-      /* Typing indicator bubble (three animated dots) */
+            /* Typing indicator: three floating dots, no bubble */
       .typing-indicator{
         display:none;
-        margin:2px 0 4px 12px;
-        padding:6px 10px;
-        border-radius:999px;
-        background:#ffffff;
-        border:1px solid #e2e4ea;
+        margin:4px 0 6px 16px;   /* tweak position as you like */
+        padding:0;
+        border:none;
+        background:transparent;
         width:auto;
         align-items:center;
         gap:4px;
@@ -254,9 +253,11 @@
         display:inline-flex;
       }
       .typing-indicator span{
-        width:6px;height:6px;
+        width:8px;
+        height:8px;
         border-radius:50%;
-        background:#9ca3af;
+        background:${CFG.primary};  /* same colour as send button */
+        opacity:0.3;
         display:inline-block;
         animation: typing-bounce 1.1s infinite ease-in-out;
       }
