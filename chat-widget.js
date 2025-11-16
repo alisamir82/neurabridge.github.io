@@ -3,12 +3,13 @@
 
   const CFG = {
     endpoint: currentScript?.dataset.endpoint || "",
-    title: currentScript?.dataset.title || "Assistant",
-    primary: currentScript?.dataset.primary || "#0b5fff",
-    accent: currentScript?.dataset.accent || "#eef4ff",
+    title: currentScript?.dataset.title || "Support Assistant",
+    // Canon-ish defaults (overridable via data-primary / data-accent)
+    primary: currentScript?.dataset.primary || "#CC0000",   // Canon red
+    accent: currentScript?.dataset.accent || "#ffffff",     // bot bubble background
     position: (currentScript?.dataset.position || "bottom-right").toLowerCase(),
     startOpen: (currentScript?.dataset.startOpen || "false").toLowerCase() === "true",
-    placeholder: currentScript?.dataset.placeholder || "Type your message…",
+    placeholder: currentScript?.dataset.placeholder || "Ask me anything…",
     chatId: currentScript?.dataset.chatId || null,
     popup: (currentScript?.dataset.popup || "false").toLowerCase() === "true",
     closeOnNavigate: (currentScript?.dataset.closeOnNavigate || "false").toLowerCase() === "true",
@@ -74,22 +75,40 @@
   wrapper.innerHTML = `
     <style>
       :host { all: initial; }
-      * { box-sizing: border-box; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+      * {
+        box-sizing: border-box;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      }
 
       ${CFG.popup ? `.bubble{ display:none !important; }` : ``}
 
       .bubble{
-        pointer-events:auto; width:56px;height:56px;border-radius:50%;background:${CFG.primary};
-        display:grid;place-items:center;color:#fff;font-weight:700;cursor:pointer;
+        pointer-events:auto;
+        width:56px;height:56px;
+        border-radius:50%;
+        background:${CFG.primary};
+        display:grid;place-items:center;
+        color:#fff;font-weight:700;
+        cursor:pointer;
         box-shadow:0 8px 28px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.12);
+        border:2px solid #ffffff;
       }
 
       .panel{
-        pointer-events:auto; position:absolute; ${CFG.position==="bottom-left"?"left:0;":"right:0;"} bottom:70px;
-        width:360px; height:520px; max-width:calc(100vw - 40px); max-height:calc(100vh - 120px);
-        background:#fff;border-radius:14px;overflow:hidden;display:none;
+        pointer-events:auto;
+        position:absolute;
+        ${CFG.position==="bottom-left"?"left:0;":"right:0;"}
+        bottom:70px;
+        width:360px; height:520px;
+        max-width:calc(100vw - 40px);
+        max-height:calc(100vh - 120px);
+        background:#ffffff;
+        border-radius:16px;
+        overflow:hidden;
+        display:none;
         box-shadow:0 14px 45px rgba(0,0,0,.18),0 10px 18px rgba(0,0,0,.12);
-        will-change: width, height; min-width:320px; min-height:360px;
+        will-change: width, height;
+        min-width:320px; min-height:360px;
       }
 
       .panel.open{
@@ -104,13 +123,34 @@
         max-width: none; max-height: none;
       }` : ``}
 
-      .panel.open{ display:flex; }
       .panel.resizable{ resize:both; }
 
-      .header{ background:#082a5b;color:#fff;padding:10px 12px;display:flex;align-items:center;gap:8px; }
-      .title{ font-weight:700; font-size:14px; flex:1; }
+      .header{
+        background:#041E42; /* Canon dark navy */
+        color:#fff;
+        padding:10px 14px;
+        display:flex;
+        align-items:center;
+        gap:8px;
+      }
+      .title{
+        font-weight:700;
+        font-size:14px;
+        letter-spacing:0.02em;
+        flex:1;
+      }
       .controls{ display:flex; gap:6px; }
-      .hbtn{ background:rgba(255,255,255,.15); color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
+      .hbtn{
+        background:rgba(255,255,255,.12);
+        color:#fff;
+        border:0;
+        border-radius:999px;
+        padding:4px 8px;
+        cursor:pointer;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+      }
 
       .lang-switch{
         display:flex;
@@ -124,7 +164,7 @@
         cursor:pointer;
         font-size:14px;
         line-height:1;
-        opacity:0.5;
+        opacity:0.6;
         padding:4px;
         border-radius:6px;
       }
@@ -133,48 +173,172 @@
         background:rgba(255,255,255,0.18);
       }
 
-      .body{ background:#fff; display:flex; flex-direction:column; min-height:0; height:100%; }
+      .body{
+        background:#f5f5f7; /* Canon-ish light grey */
+        display:flex;
+        flex-direction:column;
+        min-height:0;
+        height:100%;
+      }
+
       .messages{
         padding:12px 12px 76px;
         overflow:auto;
         flex:1;
-        background:#f7f9fc;
       }
-      .msg{ max-width:85%; padding:10px 12px; border-radius:12px; margin:8px 0; white-space:pre-wrap; word-break:break-word; line-height:1.35; }
-      .msg.user{ margin-left:auto; background:${CFG.primary}; color:#fff; }
-      .msg.bot{ background:${CFG.accent}; color:#0e1726; }
 
-      .buttons{ margin:2px 0 6px 0; display:flex; flex-wrap:wrap; gap:6px; padding-left:12px; }
+      .msg{
+        max-width:85%;
+        padding:10px 12px;
+        border-radius:14px;
+        margin:6px 0;
+        white-space:pre-wrap;
+        word-break:break-word;
+        line-height:1.4;
+        font-size:13px;
+      }
+      .msg.user{
+        margin-left:auto;
+        background:${CFG.primary};
+        color:#ffffff;
+      }
+      .msg.bot{
+        background:${CFG.accent};
+        color:#111827;
+        border:1px solid #e2e4ea;
+      }
+
+      .buttons{
+        margin:2px 0 6px 0;
+        display:flex;
+        flex-wrap:wrap;
+        gap:6px;
+        padding-left:12px;
+      }
       .link-btn{
-        display:inline-flex; align-items:center; gap:8px;
-        border:1px solid #f5bcbc; background:#ffe7e7; color:#7b1b1b;
-        border-radius:10px; padding:8px 12px; text-decoration:none;
-        max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-        transition: background .15s ease, border-color .15s ease;
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        border:1px solid #f5bcbc;
+        background:#fff5f5;
+        color:#7b1b1b;
+        border-radius:999px;
+        padding:6px 12px;
+        text-decoration:none;
+        max-width:100%;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+        font-size:12px;
+        transition: background .15s ease, border-color .15s ease, transform .1s ease;
       }
-      .link-btn:hover{ background:#ffd9d9; border-color:#f2a9a9; }
+      .link-btn:hover{
+        background:#ffe1e1;
+        border-color:#f2a9a9;
+        transform:translateY(-1px);
+      }
 
-      .thinking{ font-size:12px; opacity:.9; padding:6px 10px; border-radius:10px; background:rgba(0,0,0,.04);
-                 width:fit-content; display:none; margin:6px 0 0; }
-      .thinking.show{ display:inline-block; }
+      /* Typing indicator bubble (three animated dots) */
+      .typing-indicator{
+        display:none;
+        margin:2px 0 4px 12px;
+        padding:6px 10px;
+        border-radius:999px;
+        background:#ffffff;
+        border:1px solid #e2e4ea;
+        width:auto;
+        align-items:center;
+        gap:4px;
+      }
+      .typing-indicator.show{
+        display:inline-flex;
+      }
+      .typing-indicator span{
+        width:6px;height:6px;
+        border-radius:50%;
+        background:#9ca3af;
+        display:inline-block;
+        animation: typing-bounce 1.1s infinite ease-in-out;
+      }
+      .typing-indicator span:nth-child(2){ animation-delay:0.15s; }
+      .typing-indicator span:nth-child(3){ animation-delay:0.3s; }
 
-      .footer{ border-top:1px solid rgba(0,0,0,.06); background:#fff; display:flex; align-items:flex-end; gap:8px; padding:10px; }
-      .textarea{ flex:1; min-height:40px; max-height:160px; overflow:auto; border:1px solid #dfe3ea;
-                 border-radius:10px; padding:10px 12px; outline:none; resize:none; }
-      .send{ background:${CFG.primary}; color:#fff; border:none; border-radius:10px; padding:10px 14px; cursor:pointer; font-weight:600; }
-      .send:disabled{ opacity:.6; cursor:not-allowed; }
+      @keyframes typing-bounce{
+        0%,80%,100%{ transform:translateY(0); opacity:.4; }
+        40%{ transform:translateY(-3px); opacity:1; }
+      }
 
-      .ellipsis::after{ content:'…'; animation:dots 1.2s steps(4,end) infinite; }
-      @keyframes dots{0%,20%{content:' ';}40%{content:'.';}60%{content:'..';}80%,100%{content:'...';}}
+      .footer{
+        border-top:1px solid rgba(0,0,0,.06);
+        background:#ffffff;
+        display:flex;
+        align-items:flex-end;
+        gap:8px;
+        padding:10px;
+      }
+      .textarea{
+        flex:1;
+        min-height:40px;
+        max-height:160px;
+        overflow:auto;
+        border:1px solid #d2d7e0;
+        border-radius:999px;
+        padding:10px 14px;
+        outline:none;
+        resize:none;
+        font-size:13px;
+        background:#f9fafb;
+      }
+      .textarea:focus{
+        border-color:${CFG.primary};
+        background:#ffffff;
+        box-shadow:0 0 0 1px ${CFG.primary}1a;
+      }
+      .send{
+        background:${CFG.primary};
+        color:#fff;
+        border:none;
+        border-radius:999px;
+        padding:9px 13px;
+        cursor:pointer;
+        font-weight:600;
+        font-size:13px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+      }
+      .send:disabled{
+        opacity:.6;
+        cursor:not-allowed;
+      }
 
-      .resize-handle { position:absolute; z-index:5; }
-      .resize-handle.top { top:0; left:10px; right:10px; height:10px; cursor:ns-resize; }
-      .resize-handle.left { left:0; top:10px; bottom:10px; width:10px; cursor:ew-resize; }
-      .resize-handle.corner { top:0; left:0; width:14px; height:14px; cursor:nwse-resize; }
-      .resize-handle:hover { background: rgba(0,0,0,.04); }
+      .resize-handle{
+        position:absolute;
+        z-index:5;
+      }
+      .resize-handle.top{
+        top:0; left:10px; right:10px;
+        height:10px;
+        cursor:ns-resize;
+      }
+      .resize-handle.left{
+        left:0; top:10px; bottom:10px;
+        width:10px;
+        cursor:ew-resize;
+      }
+      .resize-handle.corner{
+        top:0; left:0;
+        width:14px;height:14px;
+        cursor:nwse-resize;
+      }
+      .resize-handle:hover{
+        background:rgba(0,0,0,.03);
+      }
     </style>
 
-    <button class="bubble" aria-label="Open chat" title="Chat"><span>💬</span></button>
+    <button class="bubble" aria-label="Open chat" title="Chat">
+      <span>💬</span>
+    </button>
 
     <section class="panel resizable" role="dialog" aria-label="Chat" aria-modal="false">
       <div class="resize-handle top" data-resize="top"></div>
@@ -189,17 +353,19 @@
             <button class="lang-btn" data-lang="de" title="German">🇩🇪</button>
             <button class="lang-btn" data-lang="fr" title="French">🇫🇷</button>
           </div>
-          <button class="hbtn" data-close>✕</button>
+          <button class="hbtn" data-close aria-label="Close chat">✕</button>
         </div>
       </div>
 
       <div class="body">
         <div class="messages" data-messages></div>
         <div class="buttons" data-buttons></div>
-        <div class="thinking" data-thinking>thinking<span class="ellipsis"></span></div>
+        <div class="typing-indicator" data-thinking>
+          <span></span><span></span><span></span>
+        </div>
         <div class="footer">
           <textarea class="textarea" data-input rows="1" placeholder="${escapeHtml(CFG.placeholder)}"></textarea>
-          <button class="send" data-send>Send</button>
+          <button class="send" data-send>▶</button>
         </div>
       </div>
     </section>
@@ -304,7 +470,7 @@
     hydrateButtonsFromStorage();
   }
 
-  // Cross-window hydrate for popup: now includes buttons
+  // Cross-window hydrate for popup: includes buttons
   window.addEventListener("message", (e) => {
     const d = e?.data;
     if (!d || d.type !== "chatWidget:hydrate" || d.chatId !== CFG.chatId) return;
