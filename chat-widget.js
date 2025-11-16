@@ -238,10 +238,10 @@
         transform:translateY(-1px);
       }
 
-            /* Typing indicator: three floating dots, no bubble */
+      /* Typing indicator: three floating dots, no bubble */
       .typing-indicator{
         display:none;
-        margin:4px 0 6px 16px;   /* tweak position as you like */
+        margin:4px 0 6px 16px;
         padding:0;
         border:none;
         background:transparent;
@@ -256,7 +256,7 @@
         width:8px;
         height:8px;
         border-radius:50%;
-        background:${CFG.primary};  /* same colour as send button */
+        background:${CFG.primary};
         opacity:0.3;
         display:inline-block;
         animation: typing-bounce 1.1s infinite ease-in-out;
@@ -267,6 +267,83 @@
       @keyframes typing-bounce{
         0%,80%,100%{ transform:translateY(0); opacity:.4; }
         40%{ transform:translateY(-3px); opacity:1; }
+      }
+
+      /* Apple-style comparison block, Canon themed */
+      .compare-block{
+        margin:4px 0 10px;
+        padding:10px 10px 8px;
+        background:#ffffff;
+        border-radius:12px;
+        border:1px solid #e2e4ea;
+        font-size:12px;
+      }
+      .compare-header{
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+        margin-bottom:6px;
+      }
+      .compare-title{
+        font-size:13px;
+        font-weight:600;
+        color:#111827;
+      }
+      .compare-products{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:8px;
+      }
+      .compare-prod{
+        text-align:left;
+      }
+      .compare-prod-name{
+        font-weight:600;
+        font-size:12px;
+        color:#111827;
+        margin-bottom:2px;
+      }
+      .compare-prod-tagline{
+        font-size:11px;
+        color:#4b5563;
+        margin-bottom:4px;
+      }
+      .compare-prod-pill{
+        display:inline-block;
+        padding:2px 6px;
+        border-radius:999px;
+        border:1px solid #e5e7eb;
+        font-size:10px;
+        color:#6b7280;
+        background:#f9fafb;
+      }
+      .compare-rows{
+        border-top:1px solid #e5e7eb;
+        margin-top:6px;
+        padding-top:6px;
+      }
+      .compare-row{
+        padding:6px 0;
+        border-bottom:1px solid #f3f4f6;
+      }
+      .compare-row:last-child{
+        border-bottom:none;
+      }
+      .compare-label{
+        font-size:11px;
+        font-weight:500;
+        color:#374151;
+        margin-bottom:3px;
+      }
+      .compare-values{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:6px;
+        font-size:11px;
+        color:#111827;
+      }
+      .compare-value{
+        white-space:pre-wrap;
       }
 
       .footer{
@@ -714,6 +791,68 @@
     step();
   }
 
+  // --- comparison renderer ---
+  function addComparison(compare) {
+    if (!compare || !Array.isArray(compare.products) || compare.products.length !== 2) {
+      return;
+    }
+
+    const [p1, p2] = compare.products;
+    // extra front-end guard: same family/category only
+    if (p1.family && p2.family && p1.family !== p2.family) return;
+
+    const rowsRaw = Array.isArray(compare.rows) ? compare.rows.slice() : [];
+    // sort by importance (lower = more important)
+    rowsRaw.sort((a, b) => (a.importance ?? 999) - (b.importance ?? 999));
+
+    const container = document.createElement("div");
+    container.className = "compare-block";
+
+    const title = compare.title ||
+      `${p1.name || "Product 1"} vs ${p2.name || "Product 2"}`;
+
+    const safe = (v) => escapeHtml(v ?? "");
+
+    const rowsHTML = rowsRaw.map(row => {
+      const label = safe(row.label || row.key || "");
+      const v1 = safe((row.values && row.values[0]) || "");
+      const v2 = safe((row.values && row.values[1]) || "");
+      if (!label && !v1 && !v2) return "";
+      return `
+        <div class="compare-row">
+          <div class="compare-label">${label}</div>
+          <div class="compare-values">
+            <div class="compare-value">${v1}</div>
+            <div class="compare-value">${v2}</div>
+          </div>
+        </div>`;
+    }).join("");
+
+    container.innerHTML = `
+      <div class="compare-header">
+        <div class="compare-title">${safe(title)}</div>
+        <div class="compare-products">
+          <div class="compare-prod">
+            <div class="compare-prod-name">${safe(p1.name || "Product 1")}</div>
+            ${p1.tagline ? `<div class="compare-prod-tagline">${safe(p1.tagline)}</div>` : ""}
+            ${p1.family ? `<div class="compare-prod-pill">${safe(p1.family)}</div>` : ""}
+          </div>
+          <div class="compare-prod">
+            <div class="compare-prod-name">${safe(p2.name || "Product 2")}</div>
+            ${p2.tagline ? `<div class="compare-prod-tagline">${safe(p2.tagline)}</div>` : ""}
+            ${p2.family ? `<div class="compare-prod-pill">${safe(p2.family)}</div>` : ""}
+          </div>
+        </div>
+      </div>
+      <div class="compare-rows">
+        ${rowsHTML}
+      </div>
+    `;
+
+    $messages.appendChild(container);
+    scrollToBottom();
+  }
+
   function addLinks(links = []) {
     $buttons.innerHTML = "";
 
@@ -810,14 +949,22 @@
         payload.text ||
         "OK";
 
+      // main text
       addMessage(text, "bot", { stream: true });
 
+      // buttons / links
       const links =
         payload.links ||
         (payload.rich && payload.rich.buttons) ||
         extractLinksFromText(text);
       addLinks(Array.isArray(links) ? links : []);
 
+      // comparison table (if present)
+      if (payload.rich && payload.rich.compare) {
+        addComparison(payload.rich.compare);
+      }
+
+      // redirects
       const url = payload.redirect || (payload.rich && payload.rich.redirect);
       if (url && typeof url === "string") {
         if (CFG.popup && window.opener && !window.opener.closed) {
