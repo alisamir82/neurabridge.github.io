@@ -47,6 +47,7 @@
   }
   const STORAGE_KEY = `chatWidget:transcript:${CFG.chatId}`;
   const HANDOFF_KEY = `chatWidget:handoffJustNavigated:${CFG.chatId}`;
+  const BUTTONS_KEY = `chatWidget:buttons:${CFG.chatId}`; // NEW
 
   // ---- host container ----
   const host = document.createElement("div");
@@ -248,6 +249,23 @@
     });
     return arr;
   }
+
+  function persistButtons(btns) {
+  try {
+    localStorage.setItem(BUTTONS_KEY, JSON.stringify(btns || []));
+  } catch {}
+}
+
+function hydrateButtons() {
+  try {
+    const raw = localStorage.getItem(BUTTONS_KEY);
+    const arr = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(arr) && arr.length) {
+      addLinks(arr); // reuse existing renderer
+    }
+  } catch {}
+}
+  
   function persistTranscript() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentTranscriptArray()));
@@ -258,26 +276,33 @@
     for (const m of arr) addMessage(m.text, m.role === "user" ? "user" : "bot");
   }
   function hydrate() {
-    try {
-      if (!CFG.popup && localStorage.getItem(HANDOFF_KEY)) {
-        localStorage.removeItem(HANDOFF_KEY);
-        localStorage.removeItem(STORAGE_KEY);
-        addMessage("Hi! How can I help?", "bot");
-        persistTranscript();
-        return;
-      }
-    } catch {}
+  // If we just performed a handoff (embedded → popup), start clean in the embedded
+  try {
+    if (!CFG.popup && localStorage.getItem(HANDOFF_KEY)) {
+      localStorage.removeItem(HANDOFF_KEY);
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(BUTTONS_KEY); // NEW: clear stored buttons
+      addMessage("Hi! How can I help?", "bot");
+      persistTranscript();
+      return;
+    }
+  } catch {}
 
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const arr = raw ? JSON.parse(raw) : null;
-      if (Array.isArray(arr) && arr.length) {
-        renderTranscript(arr);
-        return;
-      }
-    } catch {}
-    addMessage("Hi! How can I help?", "bot");
-  }
+  // Normal restore from localStorage
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(arr) && arr.length) {
+      renderTranscript(arr);
+      hydrateButtons();   // NEW: restore buttons as well
+      return;
+    }
+  } catch {}
+
+  // No transcript → show greeting; still try to hydrate buttons if any
+  addMessage("Hi! How can I help?", "bot");
+  hydrateButtons();       // NEW
+}
 
   // Cross-window hydrate for popup
   window.addEventListener("message", (e) => {
@@ -507,50 +532,51 @@
   }
 
   function addLinks(links = []) {
-    $buttons.innerHTML = "";
-    if (!Array.isArray(links) || !links.length) return;
+  $buttons.innerHTML = "";
 
-    links.forEach((l) => {
-      const url = l?.url || "#";
-      const a = document.createElement("a");
-      a.className = "link-btn";
-      a.href = url;
-      a.title = url;
-      a.textContent = (l?.label || url).replace(/^https?:\/\//, "");
-
-      if (CFG.popup && window.opener && !window.opener.closed) {
-        // In POPUP: navigate opener
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          try {
-            window.opener.location.href = url;
-          } catch {}
-          if (CFG.closeOnNavigate) {
-            try {
-              window.close();
-            } catch {}
-          }
-        });
-      } else {
-        // In EMBEDDED: open popup first, then navigate this page.
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          const w = openPopupWindow();
-          if (!w) {
-            window.location.href = url;
-            return;
-          }
-          try {
-            localStorage.setItem(HANDOFF_KEY, "1");
-          } catch {}
-          window.location.href = url;
-        });
-      }
-
-      $buttons.appendChild(a);
-      scrollToBottom();
-    });
+  if (!Array.isArray(links) || !links.length) {
+    persistButtons([]); // clear stored buttons
+    return;
   }
+
+  links.forEach((l) => {
+    const url = l?.url || "#";
+    const a = document.createElement("a");
+    a.className = "link-btn";
+    a.href = url;
+    a.title = url;
+    a.textContent = (l?.label || url).replace(/^https?:\/\//, "");
+
+    if (CFG.popup && window.opener && !window.opener.closed) {
+      // In POPUP: navigate opener
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        try { window.opener.location.href = url; } catch {}
+        if (CFG.closeOnNavigate) {
+          try { window.close(); } catch {}
+        }
+      });
+    } else {
+      // In EMBEDDED: open popup first, then navigate this page.
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const w = openPopupWindow();
+        if (!w) {
+          window.location.href = url;
+          return;
+        }
+        try { localStorage.setItem(HANDOFF_KEY, "1"); } catch {}
+        window.location.href = url;
+      });
+    }
+
+    $buttons.appendChild(a);
+    scrollToBottom();
+  });
+
+  // NEW: remember last set of buttons so popup can restore them
+  persistButtons(links);
+}
 
   async function sendMessage(text) {
     if (!CFG.endpoint) {
