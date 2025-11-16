@@ -12,7 +12,6 @@
     chatId: currentScript?.dataset.chatId || null,
     popup: (currentScript?.dataset.popup || "false").toLowerCase() === "true",
     closeOnNavigate: (currentScript?.dataset.closeOnNavigate || "false").toLowerCase() === "true",
-    // NEW: keep track of the original page URL (for both embedded and popup)
     pageUrl: currentScript?.dataset.pageUrl || window.location.href,
   };
 
@@ -20,7 +19,6 @@
   const LANG_KEY = `chatWidget:lang:${CFG.chatId}`;
   const SUPPORTED_LANGS = ["en", "de", "fr"];
 
-  // read saved language or default to English
   let currentLang = (() => {
     try {
       const saved = localStorage.getItem(LANG_KEY);
@@ -47,7 +45,7 @@
   }
   const STORAGE_KEY = `chatWidget:transcript:${CFG.chatId}`;
   const HANDOFF_KEY = `chatWidget:handoffJustNavigated:${CFG.chatId}`;
-  const BUTTONS_KEY = `chatWidget:buttons:${CFG.chatId}`; // NEW
+  const BUTTONS_KEY = `chatWidget:buttons:${CFG.chatId}`;
 
   // ---- host container ----
   const host = document.createElement("div");
@@ -99,7 +97,6 @@
         flex-direction:column;
       }
 
-      /* Popup: fill window neatly, keep footer visible */
       ${CFG.popup ? `
       .panel{
         position: fixed; inset: 8px;
@@ -235,10 +232,9 @@
     });
   });
 
-  // initialise visual state
   updateLanguageButtons();
 
-  // ---- transcript helpers ----
+  // ---- transcript + buttons helpers ----
   function currentTranscriptArray() {
     const arr = [];
     $messages.querySelectorAll(".msg").forEach((el) => {
@@ -250,69 +246,79 @@
     return arr;
   }
 
-  function persistButtons(btns) {
-  try {
-    localStorage.setItem(BUTTONS_KEY, JSON.stringify(btns || []));
-  } catch {}
-}
-
-function hydrateButtons() {
-  try {
-    const raw = localStorage.getItem(BUTTONS_KEY);
-    const arr = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(arr) && arr.length) {
-      addLinks(arr); // reuse existing renderer
-    }
-  } catch {}
-}
-  
   function persistTranscript() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(currentTranscriptArray()));
     } catch {}
   }
+
   function renderTranscript(arr) {
     $messages.innerHTML = "";
     for (const m of arr) addMessage(m.text, m.role === "user" ? "user" : "bot");
   }
+
+  function persistButtons(btns) {
+    try {
+      localStorage.setItem(BUTTONS_KEY, JSON.stringify(btns || []));
+    } catch {}
+  }
+
+  function getStoredButtons() {
+    try {
+      const raw = localStorage.getItem(BUTTONS_KEY);
+      const arr = raw ? JSON.parse(raw) : null;
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function hydrateButtonsFromStorage() {
+    const arr = getStoredButtons();
+    if (arr.length) addLinks(arr);
+  }
+
   function hydrate() {
-  // If we just performed a handoff (embedded → popup), start clean in the embedded
-  try {
-    if (!CFG.popup && localStorage.getItem(HANDOFF_KEY)) {
-      localStorage.removeItem(HANDOFF_KEY);
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(BUTTONS_KEY); // NEW: clear stored buttons
-      addMessage("Hi! How can I help?", "bot");
-      persistTranscript();
-      return;
-    }
-  } catch {}
+    try {
+      if (!CFG.popup && localStorage.getItem(HANDOFF_KEY)) {
+        localStorage.removeItem(HANDOFF_KEY);
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(BUTTONS_KEY);
+        addMessage("Hi! How can I help?", "bot");
+        persistTranscript();
+        return;
+      }
+    } catch {}
 
-  // Normal restore from localStorage
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const arr = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(arr) && arr.length) {
-      renderTranscript(arr);
-      hydrateButtons();   // NEW: restore buttons as well
-      return;
-    }
-  } catch {}
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const arr = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(arr) && arr.length) {
+        renderTranscript(arr);
+        hydrateButtonsFromStorage();
+        return;
+      }
+    } catch {}
 
-  // No transcript → show greeting; still try to hydrate buttons if any
-  addMessage("Hi! How can I help?", "bot");
-  hydrateButtons();       // NEW
-}
+    addMessage("Hi! How can I help?", "bot");
+    hydrateButtonsFromStorage();
+  }
 
-  // Cross-window hydrate for popup
+  // Cross-window hydrate for popup: now includes buttons
   window.addEventListener("message", (e) => {
     const d = e?.data;
     if (!d || d.type !== "chatWidget:hydrate" || d.chatId !== CFG.chatId) return;
+
     if (Array.isArray(d.messages) && d.messages.length) {
       renderTranscript(d.messages);
-      persistTranscript();
     }
+    if (Array.isArray(d.buttons)) {
+      addLinks(d.buttons);
+    }
+    persistTranscript();
+    persistButtons(d.buttons || []);
   });
+
   if (CFG.popup && window.opener && !window.opener.closed) {
     try {
       window.opener.postMessage({ type: "chatWidget:ready", chatId: CFG.chatId }, "*");
@@ -321,9 +327,10 @@ function hydrateButtons() {
 
   hydrate();
 
-  // ---- drag-resize (anchored) ----
+  // ---- drag-resize ----
   let rs = null;
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
   function startResize(e, mode) {
     rs = {
       mode,
@@ -341,15 +348,17 @@ function hydrateButtons() {
     window.addEventListener("pointermove", onResizeMove);
     window.addEventListener("pointerup", endResize);
   }
+
   function onResizeMove(e) {
     if (!rs) return;
-    const dx = e.clientX - rs.sx,
-      dy = e.clientY - rs.sy;
+    const dx = e.clientX - rs.sx;
+    const dy = e.clientY - rs.sy;
     if (rs.mode === "top" || rs.mode === "corner")
       $panel.style.height = clamp(rs.sh - dy, rs.minH, rs.maxH) + "px";
     if (rs.mode === "left" || rs.mode === "corner")
       $panel.style.width = clamp(rs.sw - dx, rs.minW, rs.maxW) + "px";
   }
+
   function endResize() {
     if (!rs) return;
     document.body.style.userSelect = rs.prevUserSelect || "";
@@ -357,6 +366,7 @@ function hydrateButtons() {
     window.removeEventListener("pointerup", endResize);
     rs = null;
   }
+
   $handles.forEach((h) =>
     h.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -386,7 +396,7 @@ function hydrateButtons() {
   // ---- popup plumbing ----
   function writePopupContent(w) {
     const srcAbs = new URL(currentScript?.src || "", location.href).href;
-    const parentPageUrl = window.location.href; // original page URL
+    const parentPageUrl = window.location.href;
 
     const html = `<!doctype html>
 <html>
@@ -420,8 +430,7 @@ function hydrateButtons() {
   }
 
   function openPopupWindow() {
-    const WIDTH = 520,
-      HEIGHT = 760;
+    const WIDTH = 520, HEIGHT = 760;
     const left = Math.max(
       0,
       (window.screenX || window.screenLeft) + window.innerWidth - WIDTH - 20,
@@ -445,33 +454,40 @@ function hydrateButtons() {
     ].join(",");
     const w = window.open("about:blank", "ChatWidgetPopup", features);
     if (!w) return null;
+
     persistTranscript();
     writePopupContent(w);
+
     try {
       w.resizeTo(WIDTH, HEIGHT);
       w.moveTo(left, top);
       w.focus();
     } catch {}
+
+    const sendHydrate = () => {
+      try {
+        w.postMessage(
+          {
+            type: "chatWidget:hydrate",
+            chatId: CFG.chatId,
+            messages: currentTranscriptArray(),
+            buttons: getStoredButtons(),
+          },
+          "*",
+        );
+      } catch {}
+    };
+
     const readyHandler = (e) => {
       const d = e?.data;
       if (!d || d.type !== "chatWidget:ready" || d.chatId !== CFG.chatId) return;
-      try {
-        w.postMessage(
-          { type: "chatWidget:hydrate", chatId: CFG.chatId, messages: currentTranscriptArray() },
-          "*",
-        );
-      } catch {}
+      sendHydrate();
       window.removeEventListener("message", readyHandler);
     };
     window.addEventListener("message", readyHandler);
-    setTimeout(() => {
-      try {
-        w.postMessage(
-          { type: "chatWidget:hydrate", chatId: CFG.chatId, messages: currentTranscriptArray() },
-          "*",
-        );
-      } catch {}
-    }, 300);
+
+    setTimeout(sendHydrate, 300);
+
     return w;
   }
 
@@ -517,7 +533,7 @@ function hydrateButtons() {
   }
 
   function streamText(el, fullText) {
-    const words = fullText.split(/(\s+)/); // keep spaces
+    const words = fullText.split(/(\s+)/);
     let i = 0;
     const step = () => {
       if (i >= words.length) {
@@ -526,57 +542,54 @@ function hydrateButtons() {
       }
       el.textContent += words[i++];
       scrollToBottom();
-      setTimeout(step, 25); // adjust speed here (ms per chunk)
+      setTimeout(step, 25);
     };
     step();
   }
 
   function addLinks(links = []) {
-  $buttons.innerHTML = "";
+    $buttons.innerHTML = "";
 
-  if (!Array.isArray(links) || !links.length) {
-    persistButtons([]); // clear stored buttons
-    return;
-  }
-
-  links.forEach((l) => {
-    const url = l?.url || "#";
-    const a = document.createElement("a");
-    a.className = "link-btn";
-    a.href = url;
-    a.title = url;
-    a.textContent = (l?.label || url).replace(/^https?:\/\//, "");
-
-    if (CFG.popup && window.opener && !window.opener.closed) {
-      // In POPUP: navigate opener
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        try { window.opener.location.href = url; } catch {}
-        if (CFG.closeOnNavigate) {
-          try { window.close(); } catch {}
-        }
-      });
-    } else {
-      // In EMBEDDED: open popup first, then navigate this page.
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        const w = openPopupWindow();
-        if (!w) {
-          window.location.href = url;
-          return;
-        }
-        try { localStorage.setItem(HANDOFF_KEY, "1"); } catch {}
-        window.location.href = url;
-      });
+    if (!Array.isArray(links) || !links.length) {
+      persistButtons([]);
+      return;
     }
 
-    $buttons.appendChild(a);
-    scrollToBottom();
-  });
+    links.forEach((l) => {
+      const url = l?.url || "#";
+      const a = document.createElement("a");
+      a.className = "link-btn";
+      a.href = url;
+      a.title = url;
+      a.textContent = (l?.label || url).replace(/^https?:\/\//, "");
 
-  // NEW: remember last set of buttons so popup can restore them
-  persistButtons(links);
-}
+      if (CFG.popup && window.opener && !window.opener.closed) {
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          try { window.opener.location.href = url; } catch {}
+          if (CFG.closeOnNavigate) {
+            try { window.close(); } catch {}
+          }
+        });
+      } else {
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          const w = openPopupWindow();
+          if (!w) {
+            window.location.href = url;
+            return;
+          }
+          try { localStorage.setItem(HANDOFF_KEY, "1"); } catch {}
+          window.location.href = url;
+        });
+      }
+
+      $buttons.appendChild(a);
+      scrollToBottom();
+    });
+
+    persistButtons(links);
+  }
 
   async function sendMessage(text) {
     if (!CFG.endpoint) {
@@ -596,7 +609,7 @@ function hydrateButtons() {
           message: text,
           chatId: CFG.chatId,
           lang: currentLang,
-          pageUrl: CFG.pageUrl, // NEW: send original page URL to backend
+          pageUrl: CFG.pageUrl,
         }),
         credentials: "omit",
       });
@@ -630,7 +643,6 @@ function hydrateButtons() {
         payload.text ||
         "OK";
 
-      // STREAM bot answer
       addMessage(text, "bot", { stream: true });
 
       const links =
@@ -642,26 +654,18 @@ function hydrateButtons() {
       const url = payload.redirect || (payload.rich && payload.rich.redirect);
       if (url && typeof url === "string") {
         if (CFG.popup && window.opener && !window.opener.closed) {
-          try {
-            window.opener.location.href = url;
-          } catch {}
+          try { window.opener.location.href = url; } catch {}
           if (CFG.closeOnNavigate) {
-            try {
-              window.close();
-            } catch {}
+            try { window.close(); } catch {}
           }
         } else {
           const w = openPopupWindow();
           if (!w) {
-            try {
-              window.top.location.href = url;
-            } catch (_) {
+            try { window.top.location.href = url; } catch (_) {
               window.location.href = url;
             }
           } else {
-            try {
-              localStorage.setItem(HANDOFF_KEY, "1");
-            } catch {}
+            try { localStorage.setItem(HANDOFF_KEY, "1"); } catch {}
             window.location.href = url;
           }
         }
