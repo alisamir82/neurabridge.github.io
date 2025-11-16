@@ -335,6 +335,10 @@
         color:#374151;
         margin-bottom:3px;
       }
+      .compare-label strong{
+  font-weight:600;
+  color:#111827; /* slightly darker for emphasis */
+}
       .compare-values{
         display:grid;
         grid-template-columns:1fr 1fr;
@@ -820,7 +824,7 @@
       if (!label && !v1 && !v2) return "";
       return `
         <div class="compare-row">
-          <div class="compare-label">${label}</div>
+ <div class="compare-label"><strong>${label}</strong></div>
           <div class="compare-values">
             <div class="compare-value">${v1}</div>
             <div class="compare-value">${v2}</div>
