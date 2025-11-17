@@ -771,18 +771,22 @@
 
   // ---- input / send ----
   $send.addEventListener("click", sendFromInput);
+
   $input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendFromInput();
     }
-    if ($call) {
+  });
+
+  if ($call) {
     $call.addEventListener("click", () => {
-      // optional: disable while thinking, etc., if you like
+      // debug line if you want to check:
+      // console.log("Call button clicked");
       toggleElevenLabs();
     });
   }
-  });
+
   $input.addEventListener("input", () => {
     $input.style.height = "auto";
     $input.style.height = Math.min($input.scrollHeight, 160) + "px";
