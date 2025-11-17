@@ -182,29 +182,6 @@
         height:100%;
       }
 
-      .chat-main{
-        flex:1;
-        display:flex;
-        flex-direction:column;
-        min-height:0;
-      }
-
-      .voice-main{
-        flex:1;
-        display:none;        /* hidden by default */
-        min-height:0;
-      }
-
-      .voice-main.active{
-        display:flex;        /* shown when in voice mode */
-      }
-
-      .voice-wrapper{
-        flex:1;
-        width:100%;
-        height:100%;
-      }
-
       .messages{
         padding:12px 12px 76px;
         overflow:auto;
@@ -440,27 +417,6 @@
       .resize-handle:hover{
         background:rgba(0,0,0,.03);
       }
-      .call{
-        background:#ffffff;
-        color:#111827;
-        border:1px solid #d2d7e0;
-        border-radius:999px;
-        padding:9px 11px;
-        cursor:pointer;
-        font-size:13px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-      }
-      .call:hover{
-        background:#f3f4f6;
-      }
-      .call:disabled{
-        opacity:.6;
-        cursor:not-allowed;
-      }
-
-      
     </style>
 
     <button class="bubble" aria-label="Open chat" title="Chat">
@@ -484,24 +440,13 @@
         </div>
       </div>
 
-            <div class="body">
-        <!-- TEXT MODE AREA -->
-        <div class="chat-main" data-chat-main>
-          <div class="messages" data-messages></div>
-          <div class="buttons" data-buttons></div>
-          <div class="typing-indicator" data-thinking>
-            <span></span><span></span><span></span>
-          </div>
+      <div class="body">
+        <div class="messages" data-messages></div>
+        <div class="buttons" data-buttons></div>
+        <div class="typing-indicator" data-thinking>
+          <span></span><span></span><span></span>
         </div>
-
-        <!-- VOICE MODE AREA (INITIALLY HIDDEN) -->
-        <div class="voice-main" data-voice-main>
-          <div class="voice-wrapper" data-eleven-container></div>
-        </div>
-
-        <!-- SHARED FOOTER -->
         <div class="footer">
-          <button class="call" data-call title="Start voice call">📞</button>
           <textarea class="textarea" data-input rows="1" placeholder="${escapeHtml(CFG.placeholder)}"></textarea>
           <button class="send" data-send>▶</button>
         </div>
@@ -521,10 +466,6 @@
   const $thinking = shadow.querySelector("[data-thinking]");
   const $handles = shadow.querySelectorAll(".resize-handle");
   const $langButtons = shadow.querySelectorAll(".lang-btn");
-  const $call = shadow.querySelector("[data-call]");
-  const $chatMain = shadow.querySelector("[data-chat-main]");
-  const $voiceMain = shadow.querySelector("[data-voice-main]");
-  const $voiceContainer = shadow.querySelector("[data-eleven-container]");
 
   function updateLanguageButtons() {
     $langButtons.forEach((btn) => {
@@ -807,22 +748,12 @@
 
   // ---- input / send ----
   $send.addEventListener("click", sendFromInput);
-
   $input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendFromInput();
     }
   });
-
-  if ($call) {
-    $call.addEventListener("click", () => {
-      // debug line if you want to check:
-      // console.log("Call button clicked");
-      toggleElevenLabs();
-    });
-  }
-
   $input.addEventListener("input", () => {
     $input.style.height = "auto";
     $input.style.height = Math.min($input.scrollHeight, 160) + "px";
@@ -1133,51 +1064,4 @@
       return null;
     }
   }
-    // ---- ElevenLabs inline integration (inside panel) ----
-  let elevenWidget = null;
-
-  function ensureElevenLabsWidget() {
-    if (elevenWidget) return elevenWidget;
-    if (!$voiceContainer) return null;
-
-    // 1) Create the ElevenLabs widget element INSIDE the panel
-    elevenWidget = document.createElement("elevenlabs-convai");
-    elevenWidget.setAttribute("agent-id", "agent_1801k7xywhteex7vrp5a3a596h2h");
-    elevenWidget.setAttribute("variant", "expanded");
-    // Fill the voice wrapper
-    elevenWidget.style.display = "block";
-    elevenWidget.style.width = "100%";
-    elevenWidget.style.height = "100%";
-
-    $voiceContainer.appendChild(elevenWidget);
-
-    // 2) Load the ElevenLabs embed script once (global)
-    if (!document.querySelector("script[data-elevenlabs-convai]")) {
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/@elevenlabs/convai-widget-embed";
-      script.async = true;
-      script.type = "text/javascript";
-      script.setAttribute("data-elevenlabs-convai", "1");
-      document.head.appendChild(script);
-    }
-
-    return elevenWidget;
-  }
-
-  function toggleElevenLabs() {
-    const isVoiceActive = $voiceMain.classList.contains("active");
-
-    if (isVoiceActive) {
-      // ---- BACK TO TEXT MODE ----
-      $voiceMain.classList.remove("active");
-      $chatMain.style.display = "flex";
-    } else {
-      // ---- GO TO VOICE MODE ----
-      ensureElevenLabsWidget();  // make sure widget exists
-      $chatMain.style.display = "none";
-      $voiceMain.classList.add("active");
-    }
-  }
-
-  
 })();
