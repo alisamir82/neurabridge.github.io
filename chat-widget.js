@@ -1109,17 +1109,18 @@
     if (!elevenContainer) {
       elevenContainer = document.createElement("div");
       elevenContainer.id = "elevenlabs-chat-container";
-      Object.assign(elevenContainer.style, {
-        position: "fixed",
-        right: "20px",
-        bottom: "96px",         // just above your chat bubble/panel
-        width: "420px",
-        height: "540px",
-        maxWidth: "calc(100vw - 40px)",
-        maxHeight: "calc(100vh - 120px)",
-        zIndex: "2147483647",
-        display: "none",        // hidden until user clicks call
-      });
+    Object.assign(elevenContainer.style, {
+  position: "fixed",
+  right: "100px",       // moved left so it doesn't stack on your blue bubble
+  bottom: "120px",      // a bit higher
+  width: "420px",
+  height: "540px",
+  maxWidth: "calc(100vw - 40px)",
+  maxHeight: "calc(100vh - 120px)",
+  zIndex: "2147483647",
+  display: "none",
+  pointerEvents: "auto"
+});
       document.body.appendChild(elevenContainer);
     }
 
@@ -1147,16 +1148,41 @@
   }
 
   function toggleElevenLabs() {
-    const { elevenWidget, elevenContainer } = ensureElevenLabsWidget();
-    if (!elevenContainer) return;
+  const { elevenWidget, elevenContainer } = ensureElevenLabsWidget();
+  if (!elevenContainer) return;
 
-    const isVisible = elevenContainer.style.display !== "none";
-    elevenContainer.style.display = isVisible ? "none" : "block";
+  const isVisible = elevenContainer.style.display !== "none";
 
-    if (!isVisible && elevenWidget && typeof elevenWidget.focus === "function") {
-      try { elevenWidget.focus(); } catch {}
+  if (isVisible) {
+    // ---- TURN VOICE OFF, GO BACK TO TEXT CHAT ----
+    elevenContainer.style.display = "none";
+
+    // Optionally re-open your chat panel if it was previously open
+    if (!open) {
+      openPanel();
+    }
+  } else {
+    // ---- TURN VOICE ON, HIDE TEXT CHAT ----
+    elevenContainer.style.display = "block";
+
+    // Close your chat panel so only the ElevenLabs UI is visible
+    if (open) {
+      closePanel();   // this removes the "open" class
+    }
+
+    // Try to automatically open the ElevenLabs main panel
+    if (elevenWidget) {
+      setTimeout(() => {
+        try {
+          // Many widget implementations open their main UI on click
+          elevenWidget.click();
+        } catch (e) {
+          console.warn("Could not auto-open ElevenLabs widget:", e);
+        }
+      }, 500); // small delay to let the embed script initialise
     }
   }
+}
 
   
 })();
