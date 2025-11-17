@@ -47,6 +47,7 @@
   const STORAGE_KEY = `chatWidget:transcript:${CFG.chatId}`;
   const HANDOFF_KEY = `chatWidget:handoffJustNavigated:${CFG.chatId}`;
   const BUTTONS_KEY = `chatWidget:buttons:${CFG.chatId}`;
+    let comparesHistory = [];
 
   // ---- host container ----
   const host = document.createElement("div");
@@ -532,6 +533,7 @@
         localStorage.removeItem(HANDOFF_KEY);
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(BUTTONS_KEY);
+        comparesHistory = []; 
         addMessage("Hi! How can I help?", "bot");
         persistTranscript();
         return;
@@ -562,6 +564,10 @@
     }
     if (Array.isArray(d.buttons)) {
       addLinks(d.buttons);
+    }
+    if (Array.isArray(d.compares) && d.compares.length) {
+      d.compares.forEach((c) => addComparison(c));
+      comparesHistory = d.compares.slice(); // keep local copy in popup
     }
     persistTranscript();
     persistButtons(d.buttons || []);
@@ -720,6 +726,7 @@
             chatId: CFG.chatId,
             messages: currentTranscriptArray(),
             buttons: getStoredButtons(),
+            compares: comparesHistory,
           },
           "*",
         );
@@ -965,6 +972,7 @@
 
       // comparison table (if present)
       if (payload.rich && payload.rich.compare) {
+        comparesHistory.push(payload.rich.compare); // <--- store compare
         addComparison(payload.rich.compare);
       }
 
