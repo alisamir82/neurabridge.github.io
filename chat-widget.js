@@ -417,6 +417,27 @@
       .resize-handle:hover{
         background:rgba(0,0,0,.03);
       }
+      .call{
+        background:#ffffff;
+        color:#111827;
+        border:1px solid #d2d7e0;
+        border-radius:999px;
+        padding:9px 11px;
+        cursor:pointer;
+        font-size:13px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+      }
+      .call:hover{
+        background:#f3f4f6;
+      }
+      .call:disabled{
+        opacity:.6;
+        cursor:not-allowed;
+      }
+
+      
     </style>
 
     <button class="bubble" aria-label="Open chat" title="Chat">
@@ -446,7 +467,8 @@
         <div class="typing-indicator" data-thinking>
           <span></span><span></span><span></span>
         </div>
-        <div class="footer">
+               <div class="footer">
+          <button class="call" data-call title="Start voice call">📞</button>
           <textarea class="textarea" data-input rows="1" placeholder="${escapeHtml(CFG.placeholder)}"></textarea>
           <button class="send" data-send>▶</button>
         </div>
@@ -466,6 +488,7 @@
   const $thinking = shadow.querySelector("[data-thinking]");
   const $handles = shadow.querySelectorAll(".resize-handle");
   const $langButtons = shadow.querySelectorAll(".lang-btn");
+    const $call = shadow.querySelector("[data-call]");
 
   function updateLanguageButtons() {
     $langButtons.forEach((btn) => {
@@ -753,6 +776,12 @@
       e.preventDefault();
       sendFromInput();
     }
+    if ($call) {
+    $call.addEventListener("click", () => {
+      // optional: disable while thinking, etc., if you like
+      toggleElevenLabs();
+    });
+  }
   });
   $input.addEventListener("input", () => {
     $input.style.height = "auto";
@@ -1064,4 +1093,66 @@
       return null;
     }
   }
+  // ---- ElevenLabs integration ----
+  let elevenWidget = null;
+  let elevenContainer = null;
+
+  function ensureElevenLabsWidget() {
+    if (elevenWidget && elevenContainer) return { elevenWidget, elevenContainer };
+
+    // 1) Create fixed container on the main page (outside shadow UI)
+    elevenContainer = document.getElementById("elevenlabs-chat-container");
+    if (!elevenContainer) {
+      elevenContainer = document.createElement("div");
+      elevenContainer.id = "elevenlabs-chat-container";
+      Object.assign(elevenContainer.style, {
+        position: "fixed",
+        right: "20px",
+        bottom: "96px",         // just above your chat bubble/panel
+        width: "420px",
+        height: "540px",
+        maxWidth: "calc(100vw - 40px)",
+        maxHeight: "calc(100vh - 120px)",
+        zIndex: "2147483647",
+        display: "none",        // hidden until user clicks call
+      });
+      document.body.appendChild(elevenContainer);
+    }
+
+    // 2) Create the ElevenLabs widget element
+    elevenWidget = document.createElement("elevenlabs-convai");
+    elevenWidget.setAttribute("agent-id", "agent_1801k7xywhteex7vrp5a3a596h2h");
+    // Optional: adjust behaviour / UI
+    elevenWidget.setAttribute("variant", "expanded");
+    // you can add overrides later if you want:
+    // elevenWidget.setAttribute("override-first-message", "Hi! Let’s talk about Canon products.");
+
+    elevenContainer.appendChild(elevenWidget);
+
+    // 3) Load the ElevenLabs embed script (once)
+    if (!document.querySelector("script[data-elevenlabs-convai]")) {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/@elevenlabs/convai-widget-embed";
+      script.async = true;
+      script.type = "text/javascript";
+      script.setAttribute("data-elevenlabs-convai", "1");
+      document.head.appendChild(script);
+    }
+
+    return { elevenWidget, elevenContainer };
+  }
+
+  function toggleElevenLabs() {
+    const { elevenWidget, elevenContainer } = ensureElevenLabsWidget();
+    if (!elevenContainer) return;
+
+    const isVisible = elevenContainer.style.display !== "none";
+    elevenContainer.style.display = isVisible ? "none" : "block";
+
+    if (!isVisible && elevenWidget && typeof elevenWidget.focus === "function") {
+      try { elevenWidget.focus(); } catch {}
+    }
+  }
+
+  
 })();
