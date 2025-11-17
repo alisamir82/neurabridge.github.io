@@ -182,6 +182,29 @@
         height:100%;
       }
 
+      .chat-main{
+        flex:1;
+        display:flex;
+        flex-direction:column;
+        min-height:0;
+      }
+
+      .voice-main{
+        flex:1;
+        display:none;        /* hidden by default */
+        min-height:0;
+      }
+
+      .voice-main.active{
+        display:flex;        /* shown when in voice mode */
+      }
+
+      .voice-wrapper{
+        flex:1;
+        width:100%;
+        height:100%;
+      }
+
       .messages{
         padding:12px 12px 76px;
         overflow:auto;
@@ -461,13 +484,23 @@
         </div>
       </div>
 
-      <div class="body">
-        <div class="messages" data-messages></div>
-        <div class="buttons" data-buttons></div>
-        <div class="typing-indicator" data-thinking>
-          <span></span><span></span><span></span>
+            <div class="body">
+        <!-- TEXT MODE AREA -->
+        <div class="chat-main" data-chat-main>
+          <div class="messages" data-messages></div>
+          <div class="buttons" data-buttons></div>
+          <div class="typing-indicator" data-thinking>
+            <span></span><span></span><span></span>
+          </div>
         </div>
-               <div class="footer">
+
+        <!-- VOICE MODE AREA (INITIALLY HIDDEN) -->
+        <div class="voice-main" data-voice-main>
+          <div class="voice-wrapper" data-eleven-container></div>
+        </div>
+
+        <!-- SHARED FOOTER -->
+        <div class="footer">
           <button class="call" data-call title="Start voice call">📞</button>
           <textarea class="textarea" data-input rows="1" placeholder="${escapeHtml(CFG.placeholder)}"></textarea>
           <button class="send" data-send>▶</button>
@@ -488,7 +521,10 @@
   const $thinking = shadow.querySelector("[data-thinking]");
   const $handles = shadow.querySelectorAll(".resize-handle");
   const $langButtons = shadow.querySelectorAll(".lang-btn");
-    const $call = shadow.querySelector("[data-call]");
+  const $call = shadow.querySelector("[data-call]");
+  const $chatMain = shadow.querySelector("[data-chat-main]");
+  const $voiceMain = shadow.querySelector("[data-voice-main]");
+  const $voiceContainer = shadow.querySelector("[data-eleven-container]");
 
   function updateLanguageButtons() {
     $langButtons.forEach((btn) => {
@@ -1097,44 +1133,25 @@
       return null;
     }
   }
-  // ---- ElevenLabs integration ----
+    // ---- ElevenLabs inline integration (inside panel) ----
   let elevenWidget = null;
-  let elevenContainer = null;
 
   function ensureElevenLabsWidget() {
-    if (elevenWidget && elevenContainer) return { elevenWidget, elevenContainer };
+    if (elevenWidget) return elevenWidget;
+    if (!$voiceContainer) return null;
 
-    // 1) Create fixed container on the main page (outside shadow UI)
-    elevenContainer = document.getElementById("elevenlabs-chat-container");
-    if (!elevenContainer) {
-      elevenContainer = document.createElement("div");
-      elevenContainer.id = "elevenlabs-chat-container";
-    Object.assign(elevenContainer.style, {
-  position: "fixed",
-  right: "100px",       // moved left so it doesn't stack on your blue bubble
-  bottom: "120px",      // a bit higher
-  width: "420px",
-  height: "540px",
-  maxWidth: "calc(100vw - 40px)",
-  maxHeight: "calc(100vh - 120px)",
-  zIndex: "2147483647",
-  display: "none",
-  pointerEvents: "auto"
-});
-      document.body.appendChild(elevenContainer);
-    }
-
-    // 2) Create the ElevenLabs widget element
+    // 1) Create the ElevenLabs widget element INSIDE the panel
     elevenWidget = document.createElement("elevenlabs-convai");
     elevenWidget.setAttribute("agent-id", "agent_1801k7xywhteex7vrp5a3a596h2h");
-    // Optional: adjust behaviour / UI
     elevenWidget.setAttribute("variant", "expanded");
-    // you can add overrides later if you want:
-    // elevenWidget.setAttribute("override-first-message", "Hi! Let’s talk about Canon products.");
+    // Fill the voice wrapper
+    elevenWidget.style.display = "block";
+    elevenWidget.style.width = "100%";
+    elevenWidget.style.height = "100%";
 
-    elevenContainer.appendChild(elevenWidget);
+    $voiceContainer.appendChild(elevenWidget);
 
-    // 3) Load the ElevenLabs embed script (once)
+    // 2) Load the ElevenLabs embed script once (global)
     if (!document.querySelector("script[data-elevenlabs-convai]")) {
       const script = document.createElement("script");
       script.src = "https://unpkg.com/@elevenlabs/convai-widget-embed";
@@ -1144,45 +1161,23 @@
       document.head.appendChild(script);
     }
 
-    return { elevenWidget, elevenContainer };
+    return elevenWidget;
   }
 
   function toggleElevenLabs() {
-  const { elevenWidget, elevenContainer } = ensureElevenLabsWidget();
-  if (!elevenContainer) return;
+    const isVoiceActive = $voiceMain.classList.contains("active");
 
-  const isVisible = elevenContainer.style.display !== "none";
-
-  if (isVisible) {
-    // ---- TURN VOICE OFF, GO BACK TO TEXT CHAT ----
-    elevenContainer.style.display = "none";
-
-    // Optionally re-open your chat panel if it was previously open
-    if (!open) {
-      openPanel();
-    }
-  } else {
-    // ---- TURN VOICE ON, HIDE TEXT CHAT ----
-    elevenContainer.style.display = "block";
-
-    // Close your chat panel so only the ElevenLabs UI is visible
-    if (open) {
-      closePanel();   // this removes the "open" class
-    }
-
-    // Try to automatically open the ElevenLabs main panel
-    if (elevenWidget) {
-      setTimeout(() => {
-        try {
-          // Many widget implementations open their main UI on click
-          elevenWidget.click();
-        } catch (e) {
-          console.warn("Could not auto-open ElevenLabs widget:", e);
-        }
-      }, 500); // small delay to let the embed script initialise
+    if (isVoiceActive) {
+      // ---- BACK TO TEXT MODE ----
+      $voiceMain.classList.remove("active");
+      $chatMain.style.display = "flex";
+    } else {
+      // ---- GO TO VOICE MODE ----
+      ensureElevenLabsWidget();  // make sure widget exists
+      $chatMain.style.display = "none";
+      $voiceMain.classList.add("active");
     }
   }
-}
 
   
 })();
