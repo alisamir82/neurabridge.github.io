@@ -5,7 +5,7 @@
   const CFG = {
     endpoint: currentScript?.dataset.endpoint || "",
     title: currentScript?.dataset.title || "Canon Product Assistant",
-    primary: currentScript?.dataset.primary || "#0060df", // Canon blue-style for CTA
+    primary: currentScript?.dataset.primary || "#0060df", // CTA blue
     accent: currentScript?.dataset.accent || "#ffffff",
     placeholder: currentScript?.dataset.placeholder || "Search Canon Product Catalogue",
     chatId: currentScript?.dataset.chatId || null,
@@ -13,7 +13,7 @@
     maxWidth: currentScript?.dataset.maxWidth || "1100px",
   };
 
-  // ---------- language state (same behaviour as chat-widget.js) ----------
+  // ---------- language state ----------
   const LANG_KEY = `chatWidget:lang:${CFG.chatId || "default"}`;
   const SUPPORTED_LANGS = ["en", "de", "fr"];
 
@@ -32,7 +32,7 @@
     updateLanguageButtons();
   }
 
-  // ---------- IDs & keys (reuse transcript model but local to this widget) ----------
+  // ---------- IDs & keys ----------
   if (!CFG.chatId) {
     const makeId = () =>
       crypto.randomUUID?.() ||
@@ -43,25 +43,25 @@
   const STORAGE_KEY = `wideChatWidget:transcript:${CFG.chatId}`;
   let comparesHistory = [];
 
-  // ---------- inject styles (scoped by class prefix) ----------
-  if (!document.getElementById("canon-wide-chat-widget-styles")) {
+  // ---------- styles ----------
+  if (!document.getElementById("canon-wide-chat-widget-styles-v2")) {
     const style = document.createElement("style");
-    style.id = "canon-wide-chat-widget-styles";
+    style.id = "canon-wide-chat-widget-styles-v2";
     style.textContent = `
       .cwc-wide-section {
         box-sizing: border-box;
         width: 100%;
-        background: #f5f5f7; /* light grey band like Canon ink finder */
+        background: #f5f5f7;
         display: flex;
         justify-content: center;
-        padding: 48px 16px 56px;
-        margin-top: 24vh;          /* push below half line */
+        padding: 40px 16px 56px;
+        margin-top: 12vh; /* a bit higher than before */
       }
 
       @media (max-width: 768px) {
         .cwc-wide-section {
-          margin-top: 10vh;        /* less offset on small screens */
-          padding: 32px 12px 40px;
+          margin-top: 8vh;
+          padding: 28px 12px 40px;
         }
       }
 
@@ -72,10 +72,10 @@
       }
 
       .cwc-wide-header-row {
+        position: relative;
         display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        gap: 12px;
+        justify-content: center;
+        align-items: center;
         margin-bottom: 4px;
       }
 
@@ -84,15 +84,21 @@
         font-weight: 700;
         margin: 0;
         color: #111827;
+        text-align: center;
+        flex: 1;
       }
 
       .cwc-wide-subtitle {
         font-size: 14px;
         color: #6b7280;
         margin-bottom: 14px;
+        text-align: center;
       }
 
       .cwc-wide-lang-switch {
+        position: absolute;
+        right: 0;
+        bottom: 0;
         display: inline-flex;
         align-items: center;
         gap: 4px;
@@ -119,7 +125,7 @@
         display: flex;
         gap: 8px;
         align-items: stretch;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
       }
 
       .cwc-wide-search-wrap {
@@ -185,20 +191,26 @@
         cursor: default;
       }
 
+      /* container has zero height so dropdown *overlaps* chat box */
       .cwc-wide-suggestions {
         position: relative;
         width: 100%;
+        height: 0;
       }
 
       .cwc-wide-suggestions-panel {
-        margin-top: 4px;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
         border-radius: 12px;
         background: #f3f4f6;
         border: 1px solid #e5e7eb;
         padding: 8px 0;
         max-height: 220px;
         overflow-y: auto;
-        box-shadow: 0 8px 16px rgba(15,23,42,0.08);
+        box-shadow: 0 12px 24px rgba(15,23,42,0.12);
+        z-index: 5;
       }
 
       .cwc-wide-suggestion {
@@ -213,7 +225,7 @@
       }
 
       .cwc-wide-results {
-        margin-top: 12px;
+        margin-top: 18px;
         border-radius: 18px;
         background: #ffffff;
         border: 1px solid #e5e7eb;
@@ -231,17 +243,41 @@
         line-height: 1.5;
       }
 
+      .cwc-wide-message-inner {
+        display: inline-flex;
+        align-items: flex-start;
+        gap: 8px;
+        max-width: 100%;
+      }
+
       .cwc-wide-message-user {
         text-align: right;
       }
+      .cwc-wide-message-user .cwc-wide-message-inner {
+        flex-direction: row-reverse;
+      }
 
-      .cwc-wide-badge {
-        display: inline-block;
+      /* circular avatars */
+      .cwc-wide-avatar {
+        flex: 0 0 auto;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         font-size: 11px;
-        text-transform: uppercase;
+        font-weight: 600;
         letter-spacing: 0.06em;
-        color: #9ca3af;
-        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+      .cwc-wide-avatar-ai {
+        background: #e5e7eb;
+        color: #4b5563;
+      }
+      .cwc-wide-avatar-you {
+        background: ${CFG.primary};
+        color: #ffffff;
       }
 
       .cwc-wide-bubble {
@@ -250,13 +286,11 @@
         border-radius: 16px;
         max-width: 72%;
       }
-
       .cwc-wide-bubble-user {
-        background: #111827;
+        background: ${CFG.primary};    /* blue, not black */
         color: #f9fafb;
         border-bottom-right-radius: 4px;
       }
-
       .cwc-wide-bubble-bot {
         background: #f3f4f6;
         color: #111827;
@@ -283,7 +317,6 @@
         white-space: nowrap;
       }
 
-      /* Typing indicator */
       .cwc-wide-typing {
         display: none;
         margin: 4px 0 6px 4px;
@@ -309,7 +342,6 @@
         40% { transform: translateY(-3px); opacity: 1; }
       }
 
-      /* Comparison block (lifted from chat-widget.js, namespaced) */
       .cwc-wide-compare-block {
         margin: 4px 0 10px;
         padding: 10px 10px 8px;
@@ -438,9 +470,11 @@
 
       <div class="cwc-wide-results" aria-live="polite">
         <div class="cwc-wide-message">
-          <div class="cwc-wide-badge">Canon AI</div>
-          <div class="cwc-wide-bubble cwc-wide-bubble-bot">
-            Hi! Ask me about Canon cameras, lenses, printers, or ink compatibility and I’ll help you find the right products.
+          <div class="cwc-wide-message-inner">
+            <div class="cwc-wide-avatar cwc-wide-avatar-ai">AI</div>
+            <div class="cwc-wide-bubble cwc-wide-bubble-bot">
+              Hi! Ask me about Canon cameras, lenses, printers, or ink compatibility and I’ll help you find the right products.
+            </div>
           </div>
         </div>
       </div>
@@ -450,7 +484,6 @@
     </div>
   `;
 
-  // place the section right after the script tag
   const parent = currentScript.parentNode;
   if (parent) {
     parent.insertBefore(section, currentScript.nextSibling);
@@ -458,7 +491,7 @@
     document.body.appendChild(section);
   }
 
-  // ---------- element refs ----------
+  // ---------- refs ----------
   const root = section.querySelector(".cwc-wide-root");
   const inputEl = root.querySelector(".cwc-wide-search-input");
   const iconBtn = root.querySelector(".cwc-wide-search-icon");
@@ -522,7 +555,7 @@
     }
   }
 
-  // ---------- transcript helpers (same idea as chat-widget.js) ----------
+  // ---------- transcript ----------
   function currentTranscriptArray() {
     const arr = [];
     resultsEl.querySelectorAll(".cwc-wide-message").forEach((el) => {
@@ -556,20 +589,27 @@
         return;
       }
     } catch {}
-    // default greeting already in DOM
+    // default greeting already rendered
   }
   hydrate();
 
-  // ---------- message / comparison / links ----------
+  // ---------- messages ----------
   function appendMessage(role, text, links) {
-    const msg = document.createElement("div");
-    msg.className =
+    const message = document.createElement("div");
+    message.className =
       "cwc-wide-message" +
       (role === "user" ? " cwc-wide-message-user" : "");
 
-    const badge = document.createElement("div");
-    badge.className = "cwc-wide-badge";
-    badge.textContent = role === "user" ? "You" : "Canon AI";
+    const inner = document.createElement("div");
+    inner.className = "cwc-wide-message-inner";
+
+    const avatar = document.createElement("div");
+    avatar.className =
+      "cwc-wide-avatar " +
+      (role === "user"
+        ? "cwc-wide-avatar-you"
+        : "cwc-wide-avatar-ai");
+    avatar.textContent = role === "user" ? "YOU" : "AI";
 
     const bubble = document.createElement("div");
     bubble.className =
@@ -579,8 +619,9 @@
         : "cwc-wide-bubble-bot");
     bubble.textContent = normalizeText(text);
 
-    msg.appendChild(badge);
-    msg.appendChild(bubble);
+    inner.appendChild(avatar);
+    inner.appendChild(bubble);
+    message.appendChild(inner);
 
     if (role === "bot" && Array.isArray(links) && links.length) {
       const linksWrap = document.createElement("div");
@@ -595,10 +636,10 @@
         a.textContent = l.label.replace(/^https?:\/\//, "");
         linksWrap.appendChild(a);
       });
-      msg.appendChild(linksWrap);
+      message.appendChild(linksWrap);
     }
 
-    resultsEl.appendChild(msg);
+    resultsEl.appendChild(message);
     resultsEl.scrollTop = resultsEl.scrollHeight;
     persistTranscript();
   }
@@ -665,7 +706,7 @@
     persistTranscript();
   }
 
-  // ---------- typing + loading ----------
+  // ---------- typing / loading ----------
   function setThinking(on) {
     typingEl.classList.toggle("show", !!on);
     resultsEl.scrollTop = resultsEl.scrollHeight;
@@ -677,11 +718,15 @@
     submitBtn.textContent = isLoading ? "Working…" : "SHOW RESULTS";
   }
 
-  // ---------- request / response (mirrors chat-widget.js logic) ----------
+  // ---------- request / response ----------
   async function triggerSearch() {
     const query = (inputEl.value || "").trim();
     if (!query || isRequestInFlight) return;
+
+    // clear the search box *after* capturing the query
+    inputEl.value = "";
     hideSuggestions();
+
     appendMessage("user", query);
     setLoading(true);
     setThinking(true);
@@ -745,16 +790,13 @@
         payload.text ||
         "OK";
 
-      // main text
       appendMessage("bot", text, extractLinks(payload, text));
 
-      // comparison table
       if (payload.rich && payload.rich.compare) {
         comparesHistory.push(payload.rich.compare);
         addComparison(payload.rich.compare);
       }
 
-      // redirects: here we just open in a new tab (no popup handoff)
       const url = payload.redirect || (payload.rich && payload.rich.redirect);
       if (url && typeof url === "string") {
         window.open(url, "_blank", "noopener,noreferrer");
