@@ -578,6 +578,65 @@
   setupTyping();
 
   // ---------- messages ----------
+
+  function streamBotMessage(text, links) {
+  setupTyping();
+
+  const message = document.createElement("div");
+  message.className = "cwc-wide-message";
+
+  const inner = document.createElement("div");
+  inner.className = "cwc-wide-message-inner";
+
+  const bubble = document.createElement("div");
+  bubble.className = "cwc-wide-bubble cwc-wide-bubble-bot";
+  bubble.textContent = ""; // we'll fill it gradually
+
+  inner.appendChild(bubble);
+  message.appendChild(inner);
+
+  // Insert above typing indicator if present
+  if (typingEl && typingEl.parentNode === resultsEl) {
+    resultsEl.insertBefore(message, typingEl);
+  } else {
+    resultsEl.appendChild(message);
+  }
+
+  // Add links immediately (they don't need to stream)
+  if (Array.isArray(links) && links.length) {
+    const linksWrap = document.createElement("div");
+    linksWrap.className = "cwc-wide-links";
+    links.forEach((l) => {
+      if (!l || !l.url || !l.label) return;
+      const a = document.createElement("a");
+      a.className = "cwc-wide-link";
+      a.href = l.url;
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.textContent = l.label.replace(/^https?:\/\//, "");
+      linksWrap.appendChild(a);
+    });
+    message.appendChild(linksWrap);
+  }
+
+  resultsEl.style.display = "block";
+
+  const words = normalizeText(text).split(/(\s+)/); // keep spaces
+  let i = 0;
+
+  const step = () => {
+    if (i >= words.length) {
+      resultsEl.scrollTop = resultsEl.scrollHeight;
+      persistTranscript();
+      return;
+    }
+    bubble.textContent += words[i++];
+    resultsEl.scrollTop = resultsEl.scrollHeight;
+    setTimeout(step, 20); // tweak speed if you like
+  };
+
+  step();
+}
   function appendMessage(role, text, links) {
     setupTyping();
 
@@ -782,7 +841,8 @@
         payload.text ||
         "OK";
 
-      appendMessage("bot", text, extractLinks(payload, text));
+      const links = extractLinks(payload, text);
+streamBotMessage(text, links);
 
       if (payload.rich && payload.rich.compare) {
         comparesHistory.push(payload.rich.compare);
@@ -813,11 +873,19 @@
     renderSuggestions();
   });
   inputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      triggerSearch();
-    }
-  });
+  if (e.key === "Enter") {
+    e.preventDefault();
+    triggerSearch();
+  } else if (e.key === "Escape") {
+    // ESC closes the suggestions without sending anything
+    hideSuggestions();
+    inputEl.blur();
+  }
+});
+  inputEl.addEventListener("blur", () => {
+  // Small delay so clicks on a suggestion still register
+  setTimeout(() => hideSuggestions(), 120);
+});
 
   iconBtn.addEventListener("click", (e) => {
     e.preventDefault();
