@@ -611,8 +611,12 @@
       const a = document.createElement("a");
       a.className = "cwc-wide-link";
       a.href = l.url;
-      a.target = "_blank";
-      a.rel = "noreferrer";
+a.onclick = (e) => {
+  e.preventDefault();
+  window.open(l.url, "_blank", "noopener,noreferrer");
+  // keep user on your current page (no focus change)
+  window.focus();
+};
       a.textContent = l.label.replace(/^https?:\/\//, "");
       linksWrap.appendChild(a);
     });
