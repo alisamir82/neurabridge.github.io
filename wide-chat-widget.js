@@ -44,9 +44,9 @@
   let comparesHistory = [];
 
   // ---------- styles ----------
-  if (!document.getElementById("canon-wide-chat-widget-styles-v2")) {
+  if (!document.getElementById("canon-wide-chat-widget-styles-v3")) {
     const style = document.createElement("style");
-    style.id = "canon-wide-chat-widget-styles-v2";
+    style.id = "canon-wide-chat-widget-styles-v3";
     style.textContent = `
       .cwc-wide-section {
         box-sizing: border-box;
@@ -55,12 +55,12 @@
         display: flex;
         justify-content: center;
         padding: 40px 16px 56px;
-        margin-top: 12vh; /* a bit higher than before */
+        margin-top: 18vh; /* dropped lower per arrow */
       }
 
       @media (max-width: 768px) {
         .cwc-wide-section {
-          margin-top: 8vh;
+          margin-top: 10vh;
           padding: 28px 12px 40px;
         }
       }
@@ -119,6 +119,11 @@
       .cwc-wide-lang-btn.active {
         opacity: 1;
         background: rgba(15,23,42,0.08);
+      }
+
+      /* shell keeps search + suggestions aligned */
+      .cwc-wide-search-shell {
+        position: relative;
       }
 
       .cwc-wide-search-row {
@@ -191,37 +196,40 @@
         cursor: default;
       }
 
-      /* container has zero height so dropdown *overlaps* chat box */
+      /* suggestions now tied to the search-shell; overlay & same width */
       .cwc-wide-suggestions {
-        position: relative;
-        width: 100%;
-        height: 0;
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 5;
+        pointer-events: none; /* panel handles its own */
       }
 
       .cwc-wide-suggestions-panel {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        border-radius: 12px;
-        background: #f3f4f6;
+        pointer-events: auto;
+        border-radius: 18px;
+        background: #ffffff;
         border: 1px solid #e5e7eb;
-        padding: 8px 0;
+        padding: 6px 0;
         max-height: 220px;
         overflow-y: auto;
-        box-shadow: 0 12px 24px rgba(15,23,42,0.12);
-        z-index: 5;
+        box-shadow: 0 16px 32px rgba(15,23,42,0.15);
       }
 
       .cwc-wide-suggestion {
-        padding: 8px 16px;
+        padding: 8px 18px;
         font-size: 14px;
         color: #4b5563;
         cursor: pointer;
       }
 
+      .cwc-wide-suggestion + .cwc-wide-suggestion {
+        border-top: 1px solid #f3f4f6;
+      }
+
       .cwc-wide-suggestion:hover {
-        background: #e5e7eb;
+        background: #f9fafb;
       }
 
       .cwc-wide-results {
@@ -257,7 +265,6 @@
         flex-direction: row-reverse;
       }
 
-      /* circular avatars */
       .cwc-wide-avatar {
         flex: 0 0 auto;
         width: 26px;
@@ -287,7 +294,7 @@
         max-width: 72%;
       }
       .cwc-wide-bubble-user {
-        background: ${CFG.primary};    /* blue, not black */
+        background: ${CFG.primary};
         color: #f9fafb;
         border-bottom-right-radius: 4px;
       }
@@ -451,22 +458,24 @@
       </div>
       <div class="cwc-wide-subtitle">Search Canon Product Catalogue</div>
 
-      <div class="cwc-wide-search-row">
-        <div class="cwc-wide-search-wrap">
-          <input
-            type="text"
-            class="cwc-wide-search-input"
-            placeholder="${escapeHtml(CFG.placeholder)}"
-            aria-label="Search Canon Product Catalogue"
-          />
-          <button class="cwc-wide-search-icon" aria-label="Search">
-            &#128269;
-          </button>
+      <div class="cwc-wide-search-shell">
+        <div class="cwc-wide-search-row">
+          <div class="cwc-wide-search-wrap">
+            <input
+              type="text"
+              class="cwc-wide-search-input"
+              placeholder="${escapeHtml(CFG.placeholder)}"
+              aria-label="Search Canon Product Catalogue"
+            />
+            <button class="cwc-wide-search-icon" aria-label="Search">
+              &#128269;
+            </button>
+          </div>
+          <button class="cwc-wide-search-submit">SHOW RESULTS</button>
         </div>
-        <button class="cwc-wide-search-submit">SHOW RESULTS</button>
-      </div>
 
-      <div class="cwc-wide-suggestions"></div>
+        <div class="cwc-wide-suggestions"></div>
+      </div>
 
       <div class="cwc-wide-results" aria-live="polite">
         <div class="cwc-wide-message">
@@ -723,7 +732,6 @@
     const query = (inputEl.value || "").trim();
     if (!query || isRequestInFlight) return;
 
-    // clear the search box *after* capturing the query
     inputEl.value = "";
     hideSuggestions();
 
@@ -799,7 +807,11 @@
 
       const url = payload.redirect || (payload.rich && payload.rich.redirect);
       if (url && typeof url === "string") {
-        window.open(url, "_blank", "noopener,noreferrer");
+        // Open in new tab but keep focus on current page
+        const w = window.open(url, "_blank", "noopener,noreferrer");
+        try {
+          window.focus();
+        } catch {}
       }
     } catch (e) {
       console.warn("[WideChatWidget] parse error; showing raw.");
