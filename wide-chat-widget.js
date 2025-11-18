@@ -44,9 +44,9 @@
   let comparesHistory = [];
 
   // ---------- styles ----------
-  if (!document.getElementById("canon-wide-chat-widget-styles-v3")) {
+  if (!document.getElementById("canon-wide-chat-widget-styles-v4")) {
     const style = document.createElement("style");
-    style.id = "canon-wide-chat-widget-styles-v3";
+    style.id = "canon-wide-chat-widget-styles-v4";
     style.textContent = `
       .cwc-wide-section {
         box-sizing: border-box;
@@ -55,7 +55,7 @@
         display: flex;
         justify-content: center;
         padding: 40px 16px 56px;
-        margin-top: 18vh; /* dropped lower per arrow */
+        margin-top: 18vh;
       }
 
       @media (max-width: 768px) {
@@ -196,14 +196,14 @@
         cursor: default;
       }
 
-      /* suggestions now tied to the search-shell; overlay & same width */
+      /* suggestions overlay */
       .cwc-wide-suggestions {
         position: absolute;
         top: calc(100% + 6px);
         left: 0;
         right: 0;
         z-index: 5;
-        pointer-events: none; /* panel handles its own */
+        pointer-events: none;
       }
 
       .cwc-wide-suggestions-panel {
@@ -244,6 +244,8 @@
         box-shadow: 0 10px 24px rgba(15,23,42,0.10);
         font-size: 14px;
         color: #111827;
+        display: none;       /* hidden until first message */
+        position: relative;
       }
 
       .cwc-wide-message {
@@ -252,39 +254,12 @@
       }
 
       .cwc-wide-message-inner {
-        display: inline-flex;
-        align-items: flex-start;
-        gap: 8px;
+        display: inline-block;
         max-width: 100%;
       }
 
       .cwc-wide-message-user {
         text-align: right;
-      }
-      .cwc-wide-message-user .cwc-wide-message-inner {
-        flex-direction: row-reverse;
-      }
-
-      .cwc-wide-avatar {
-        flex: 0 0 auto;
-        width: 26px;
-        height: 26px;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
-      .cwc-wide-avatar-ai {
-        background: #e5e7eb;
-        color: #4b5563;
-      }
-      .cwc-wide-avatar-you {
-        background: ${CFG.primary};
-        color: #ffffff;
       }
 
       .cwc-wide-bubble {
@@ -326,19 +301,18 @@
 
       .cwc-wide-typing {
         display: none;
-        margin: 4px 0 6px 4px;
-        align-items: center;
-        gap: 4px;
+        padding: 4px 0 4px 4px;
       }
       .cwc-wide-typing.show {
         display: inline-flex;
       }
       .cwc-wide-typing span {
-        width: 7px;
-        height: 7px;
+        width: 10px;
+        height: 10px;
         border-radius: 50%;
         background: ${CFG.primary};
         opacity: 0.3;
+        margin-right: 4px;
         animation: cwc-wide-typing-bounce 1.1s infinite ease-in-out;
       }
       .cwc-wide-typing span:nth-child(2) { animation-delay: 0.15s; }
@@ -477,19 +451,7 @@
         <div class="cwc-wide-suggestions"></div>
       </div>
 
-      <div class="cwc-wide-results" aria-live="polite">
-        <div class="cwc-wide-message">
-          <div class="cwc-wide-message-inner">
-            <div class="cwc-wide-avatar cwc-wide-avatar-ai">AI</div>
-            <div class="cwc-wide-bubble cwc-wide-bubble-bot">
-              Hi! Ask me about Canon cameras, lenses, printers, or ink compatibility and I’ll help you find the right products.
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="cwc-wide-typing" data-typing>
-        <span></span><span></span><span></span>
-      </div>
+      <div class="cwc-wide-results" aria-live="polite"></div>
     </div>
   `;
 
@@ -507,8 +469,20 @@
   const submitBtn = root.querySelector(".cwc-wide-search-submit");
   const suggestionsRoot = root.querySelector(".cwc-wide-suggestions");
   const resultsEl = root.querySelector(".cwc-wide-results");
-  const typingEl = root.querySelector("[data-typing]");
   const langButtons = root.querySelectorAll(".cwc-wide-lang-btn");
+
+  let typingEl = null;
+
+  function setupTyping() {
+    if (!typingEl) {
+      typingEl = document.createElement("div");
+      typingEl.className = "cwc-wide-typing";
+      typingEl.innerHTML = "<span></span><span></span><span></span>";
+    }
+    if (resultsEl && !resultsEl.contains(typingEl)) {
+      resultsEl.appendChild(typingEl);
+    }
+  }
 
   function updateLanguageButtons() {
     langButtons.forEach((btn) => {
@@ -547,9 +521,10 @@
       item.className = "cwc-wide-suggestion";
       item.textContent = text;
       item.addEventListener("click", () => {
+        // Only fill the box and focus – do NOT send yet
         inputEl.value = text;
+        inputEl.focus();
         hideSuggestions();
-        triggerSearch();
       });
       suggestionsPanel.appendChild(item);
     });
@@ -584,9 +559,8 @@
 
   function renderTranscript(arr) {
     resultsEl.innerHTML = "";
-    for (const m of arr) {
-      appendMessage(m.role, m.text);
-    }
+    arr.forEach((m) => appendMessage(m.role, m.text));
+    resultsEl.style.display = arr.length ? "block" : "none";
   }
 
   function hydrate() {
@@ -598,12 +572,15 @@
         return;
       }
     } catch {}
-    // default greeting already rendered
+    // no default greeting
   }
   hydrate();
+  setupTyping();
 
   // ---------- messages ----------
   function appendMessage(role, text, links) {
+    setupTyping();
+
     const message = document.createElement("div");
     message.className =
       "cwc-wide-message" +
@@ -611,14 +588,6 @@
 
     const inner = document.createElement("div");
     inner.className = "cwc-wide-message-inner";
-
-    const avatar = document.createElement("div");
-    avatar.className =
-      "cwc-wide-avatar " +
-      (role === "user"
-        ? "cwc-wide-avatar-you"
-        : "cwc-wide-avatar-ai");
-    avatar.textContent = role === "user" ? "YOU" : "AI";
 
     const bubble = document.createElement("div");
     bubble.className =
@@ -628,7 +597,6 @@
         : "cwc-wide-bubble-bot");
     bubble.textContent = normalizeText(text);
 
-    inner.appendChild(avatar);
     inner.appendChild(bubble);
     message.appendChild(inner);
 
@@ -648,7 +616,14 @@
       message.appendChild(linksWrap);
     }
 
-    resultsEl.appendChild(message);
+    // insert above typing indicator if present
+    if (typingEl && typingEl.parentNode === resultsEl) {
+      resultsEl.insertBefore(message, typingEl);
+    } else {
+      resultsEl.appendChild(message);
+    }
+
+    resultsEl.style.display = "block";
     resultsEl.scrollTop = resultsEl.scrollHeight;
     persistTranscript();
   }
@@ -710,15 +685,24 @@
       </div>
     `;
 
-    resultsEl.appendChild(container);
+    if (typingEl && typingEl.parentNode === resultsEl) {
+      resultsEl.insertBefore(container, typingEl);
+    } else {
+      resultsEl.appendChild(container);
+    }
+    resultsEl.style.display = "block";
     resultsEl.scrollTop = resultsEl.scrollHeight;
     persistTranscript();
   }
 
   // ---------- typing / loading ----------
   function setThinking(on) {
+    setupTyping();
     typingEl.classList.toggle("show", !!on);
-    resultsEl.scrollTop = resultsEl.scrollHeight;
+    if (on) {
+      resultsEl.style.display = "block";
+      resultsEl.scrollTop = resultsEl.scrollHeight;
+    }
   }
 
   function setLoading(isLoading) {
@@ -807,11 +791,8 @@
 
       const url = payload.redirect || (payload.rich && payload.rich.redirect);
       if (url && typeof url === "string") {
-        // Open in new tab but keep focus on current page
         const w = window.open(url, "_blank", "noopener,noreferrer");
-        try {
-          window.focus();
-        } catch {}
+        try { window.focus(); } catch {}
       }
     } catch (e) {
       console.warn("[WideChatWidget] parse error; showing raw.");
