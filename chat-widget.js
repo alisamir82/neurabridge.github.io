@@ -528,31 +528,20 @@
   }
 
   function hydrate() {
-    try {
-      if (!CFG.popup && localStorage.getItem(HANDOFF_KEY)) {
-        localStorage.removeItem(HANDOFF_KEY);
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(BUTTONS_KEY);
-        comparesHistory = []; 
-        addMessage("Hi! How can I help?", "bot");
-        persistTranscript();
-        return;
-      }
-    } catch {}
+  // For the main (non-popup) widget we always start with a fresh chat.
+  // Popup windows will still receive the live transcript via postMessage.
+  try {
+    if (!CFG.popup) {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(BUTTONS_KEY);
+      localStorage.removeItem(HANDOFF_KEY);
+      comparesHistory = [];
+    }
+  } catch {}
 
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const arr = raw ? JSON.parse(raw) : null;
-      if (Array.isArray(arr) && arr.length) {
-        renderTranscript(arr);
-        hydrateButtonsFromStorage();
-        return;
-      }
-    } catch {}
-
-    addMessage("Hi! How can I help?", "bot");
-    hydrateButtonsFromStorage();
-  }
+  // Show a fresh greeting for every new page load
+  addMessage("Hi! How can I help?", "bot");
+}
 
   // Cross-window hydrate for popup: includes buttons
   window.addEventListener("message", (e) => {
