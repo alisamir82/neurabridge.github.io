@@ -41,6 +41,10 @@
     localStorage.setItem("wideChatWidgetChatId", CFG.chatId);
   }
   const STORAGE_KEY = `wideChatWidget:transcript:${CFG.chatId}`;
+  // Always start with a fresh conversation on page load
+try {
+  localStorage.removeItem(STORAGE_KEY);
+} catch {}
   let comparesHistory = [];
 
   // ---------- styles ----------
@@ -581,16 +585,12 @@
   }
 
   function hydrate() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const arr = raw ? JSON.parse(raw) : null;
-      if (Array.isArray(arr) && arr.length) {
-        renderTranscript(arr);
-        return;
-      }
-    } catch {}
-    // no default greeting
-  }
+  // Always start empty – don’t restore any previous transcript
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+  // Intentionally no default greeting for the wide widget
+}
   hydrate();
   setupTyping();
 
