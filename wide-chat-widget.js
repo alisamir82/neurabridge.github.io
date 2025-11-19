@@ -298,7 +298,20 @@
         overflow: hidden;
         white-space: nowrap;
       }
-
+      .cwc-msg.user {
+  max-width: 70%;       /* ensures wide bubble */
+  align-self: flex-end; /* sends bubble to the right */
+  white-space: normal;  /* allow natural wrapping */
+  word-break: break-word;
+  background: #0067e5;  /* your Canon blue */
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;
+  padding: 12px 16px;
+  font-size: 15px;
+}
+.cwc-messages {
+  padding: 20px 24px; 
+}
       .cwc-wide-typing {
         display: none;
         padding: 4px 0 4px 4px;
@@ -323,14 +336,18 @@
         40% { transform: translateY(-3px); opacity: 1; }
       }
 
-      .cwc-wide-compare-block {
-        margin: 4px 0 10px;
-        padding: 10px 10px 8px;
-        background: #ffffff;
-        border-radius: 12px;
-        border: 1px solid #e2e4ea;
-        font-size: 12px;
-      }
+      .cwc-compare-block {
+  margin: 24px 0;          /* adds top & bottom spacing */
+  padding: 20px 24px;      /* adds spacing inside box */
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e3e6ec;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.05);
+}
+
+.cwc-compare-row {
+  padding: 10px 0;
+}
       .cwc-wide-compare-header {
         display: flex;
         flex-direction: column;
