@@ -1,0 +1,1945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PMO-AI Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg-alt: #111827;
+      --bg-card: #020617;
+      --bg-card-alt: #020817;
+      --border-subtle: #1f2937;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.12);
+      --accent-strong: rgba(56, 189, 248, 0.35);
+      --danger: #f97373;
+      --danger-soft: rgba(248, 113, 113, 0.12);
+      --amber: #fbbf24;
+      --green: #22c55e;
+      --text-main: #e5e7eb;
+      --text-muted: #9ca3af;
+      --text-soft: #6b7280;
+      --text-strong: #f9fafb;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-pill: 999px;
+      --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.8);
+      --shadow-elevated: 0 20px 60px rgba(0, 0, 0, 0.9);
+      --transition-fast: 150ms ease-out;
+      --transition-med: 220ms ease;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: radial-gradient(circle at top, #1f2937 0, #020617 55%);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+    }
+
+    .pmo-app {
+      width: 100%;
+      max-width: 1400px;
+      min-height: 100vh;
+      padding: 20px 20px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* HEADER / FILTERS */
+
+    .pmo-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      border-radius: var(--radius-xl);
+      background: linear-gradient(
+          110deg,
+          rgba(8, 47, 73, 0.6),
+          rgba(15, 23, 42, 0.8)
+        ),
+        radial-gradient(circle at top left, rgba(56, 189, 248, 0.35), transparent);
+      box-shadow: var(--shadow-soft);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      backdrop-filter: blur(22px);
+    }
+
+    .pmo-header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .pmo-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      background: radial-gradient(circle at 30% 20%, #38bdf8, #0ea5e9);
+      box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.9),
+        0 12px 35px rgba(56, 189, 248, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: #0b1120;
+      letter-spacing: 0.06em;
+    }
+
+    .pmo-title-block {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .pmo-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: var(--text-strong);
+    }
+
+    .pmo-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .pmo-filters {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pmo-select,
+    .pmo-input {
+      background: rgba(15, 23, 42, 0.85);
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      color: var(--text-main);
+      font-size: 12px;
+      padding: 6px 26px 6px 11px;
+      outline: none;
+      min-width: 160px;
+      appearance: none;
+      position: relative;
+      line-height: 1.4;
+    }
+
+    .pmo-select:focus,
+    .pmo-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.65);
+    }
+
+    .pmo-select-wrapper {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .pmo-select-wrapper::after {
+      content: "▾";
+      position: absolute;
+      right: 10px;
+      font-size: 9px;
+      color: var(--text-soft);
+      pointer-events: none;
+    }
+
+    .pmo-btn {
+      border-radius: var(--radius-pill);
+      padding: 7px 14px;
+      font-size: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.7);
+      color: var(--text-main);
+      background: radial-gradient(circle at top left, #111827, #020617);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background var(--transition-fast), border-color var(--transition-fast),
+        transform var(--transition-fast), box-shadow var(--transition-fast);
+    }
+
+    .pmo-btn span.icon {
+      font-size: 14px;
+    }
+
+    .pmo-btn-primary {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: radial-gradient(circle at 20% 0, #38bdf8, #0f172a);
+      color: #0b1120;
+      font-weight: 600;
+      box-shadow: 0 6px 18px rgba(56, 189, 248, 0.45);
+    }
+
+    .pmo-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.9);
+      border-color: rgba(156, 163, 175, 0.9);
+    }
+
+    .pmo-btn-primary:hover {
+      border-color: #e5e7eb;
+      box-shadow: 0 10px 28px rgba(56, 189, 248, 0.6);
+    }
+
+    .pmo-btn:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+
+    /* MAIN LAYOUT */
+
+    .pmo-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 4px;
+    }
+
+    /* KPI CARDS */
+
+    .pmo-kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .pmo-kpi-card {
+      background: radial-gradient(circle at top, #020617, #020617 55%, #020617);
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(30, 64, 175, 0.7);
+      padding: 10px 12px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.8);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pmo-kpi-card::before {
+      content: "";
+      position: absolute;
+      inset: -30%;
+      background: radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 60%);
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .pmo-kpi-label {
+      font-size: 11px;
+      color: var(--text-soft);
+      margin-bottom: 3px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .pmo-kpi-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-strong);
+      margin-bottom: 2px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .pmo-kpi-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      position: relative;
+      z-index: 1;
+    }
+
+    .pmo-kpi-pill {
+      border-radius: var(--radius-pill);
+      padding: 2px 7px;
+      border: 1px solid rgba(148, 163, 184, 0.65);
+      background: rgba(15, 23, 42, 0.85);
+    }
+
+    .pmo-kpi-pill--danger {
+      border-color: rgba(248, 113, 113, 0.9);
+      background: var(--danger-soft);
+      color: #fecaca;
+    }
+
+    .pmo-kpi-pill--ok {
+      border-color: rgba(52, 211, 153, 0.9);
+      background: rgba(22, 163, 74, 0.12);
+      color: #bbf7d0;
+    }
+
+    /* MAIN 2-COLUMN LAYOUT */
+
+    .pmo-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr);
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .pmo-column {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .pmo-panel {
+      background: linear-gradient(130deg, #020617, #020617 55%, #020617);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-subtle);
+      padding: 11px 12px;
+      box-shadow: 0 14px 35px rgba(15, 23, 42, 0.85);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pmo-panel::before {
+      content: "";
+      position: absolute;
+      inset: -50%;
+      background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.06), transparent);
+      opacity: 0.8;
+      pointer-events: none;
+    }
+
+    .pmo-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 8px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .pmo-panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .pmo-panel-tag {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: var(--radius-pill);
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(55, 65, 81, 0.85);
+      color: var(--text-soft);
+    }
+
+    .pmo-panel-body {
+      font-size: 13px;
+      color: var(--text-main);
+      position: relative;
+      z-index: 1;
+    }
+
+    .pmo-muted {
+      color: var(--text-muted);
+    }
+
+    .pmo-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pmo-list-item {
+      border-radius: 10px;
+      padding: 7px 8px;
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(31, 41, 55, 0.9);
+    }
+
+    .pmo-list-item strong {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 2px;
+      color: var(--text-strong);
+    }
+
+    .pmo-list-item span {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .pmo-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .pmo-chip {
+      border-radius: 10px;
+      padding: 1px 6px;
+      font-size: 10px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text-soft);
+    }
+
+    .pmo-chip.danger {
+      border-color: rgba(248, 113, 113, 0.9);
+      background: rgba(127, 29, 29, 0.7);
+      color: #fee2e2;
+    }
+
+    .pmo-chip.amber {
+      border-color: rgba(251, 191, 36, 0.9);
+      background: rgba(120, 53, 15, 0.75);
+      color: #fef3c7;
+    }
+
+    .pmo-chip.green {
+      border-color: rgba(22, 163, 74, 0.9);
+      background: rgba(22, 101, 52, 0.8);
+      color: #bbf7d0;
+    }
+
+    .pmo-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      font-size: 11px;
+      border-radius: var(--radius-pill);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      color: var(--text-muted);
+    }
+
+    .pmo-pill span.dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 1);
+    }
+
+    .pmo-pill.red span.dot {
+      background: #f97373;
+    }
+
+    .pmo-pill.amber span.dot {
+      background: #facc15;
+    }
+
+    .pmo-pill.green span.dot {
+      background: #22c55e;
+    }
+
+    /* TABLES */
+
+    .pmo-table-wrapper {
+      border-radius: 12px;
+      border: 1px solid rgba(31, 41, 55, 0.95);
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.95);
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .pmo-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      min-width: 100%;
+    }
+
+    .pmo-table thead {
+      position: sticky;
+      top: 0;
+      background: rgba(15, 23, 42, 1);
+      z-index: 2;
+    }
+
+    .pmo-table th,
+    .pmo-table td {
+      padding: 7px 8px;
+      text-align: left;
+    }
+
+    .pmo-table th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      border-bottom: 1px solid rgba(31, 41, 55, 1);
+      background: rgba(15, 23, 42, 0.98);
+    }
+
+    .pmo-table tr:nth-child(even) td {
+      background: rgba(17, 24, 39, 0.9);
+    }
+
+    .pmo-table tr:nth-child(odd) td {
+      background: rgba(15, 23, 42, 0.95);
+    }
+
+    .pmo-table td {
+      color: var(--text-main);
+      border-bottom: 1px solid rgba(31, 41, 55, 0.95);
+      vertical-align: top;
+    }
+
+    .pmo-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1px 6px;
+      font-size: 10px;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text-soft);
+      white-space: nowrap;
+    }
+
+    .pmo-badge.red {
+      border-color: rgba(248, 113, 113, 0.9);
+      background: rgba(127, 29, 29, 0.85);
+      color: #fee2e2;
+    }
+
+    .pmo-badge.amber {
+      border-color: rgba(251, 191, 36, 0.9);
+      background: rgba(120, 53, 15, 0.85);
+      color: #fef3c7;
+    }
+
+    .pmo-badge.green {
+      border-color: rgba(34, 197, 94, 0.9);
+      background: rgba(22, 101, 52, 0.9);
+      color: #bbf7d0;
+    }
+
+    .pmo-badge.trend {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: rgba(15, 23, 42, 0.95);
+      color: #7dd3fc;
+    }
+
+    /* CHAT WIDGET */
+
+    .pmo-chat-toggle {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 999;
+      width: 52px;
+      height: 52px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 20% 0, #38bdf8, #0f172a);
+      color: #0b1120;
+      box-shadow: var(--shadow-elevated);
+      transition: transform var(--transition-med), box-shadow var(--transition-med),
+        background var(--transition-med);
+    }
+
+    .pmo-chat-toggle:hover {
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 18px 45px rgba(56, 189, 248, 0.8);
+    }
+
+    .pmo-chat-toggle span.icon {
+      font-size: 22px;
+    }
+
+    .pmo-chat-toggle span.badge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      font-size: 9px;
+      background: #22c55e;
+      color: #022c22;
+      border-radius: 999px;
+      padding: 1px 5px;
+      font-weight: 600;
+    }
+
+    .pmo-chat-window {
+      position: fixed;
+      right: 24px;
+      bottom: 90px;
+      width: 360px;
+      max-height: 520px;
+      display: flex;
+      flex-direction: column;
+      border-radius: 20px;
+      background: radial-gradient(circle at top, #020617, #020617 55%, #020617);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      box-shadow: var(--shadow-elevated);
+      overflow: hidden;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(10px) scale(0.96);
+      transform-origin: bottom right;
+      transition: opacity var(--transition-med), transform var(--transition-med),
+        visibility var(--transition-med);
+      z-index: 998;
+      backdrop-filter: blur(18px);
+    }
+
+    .pmo-chat-window.open {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+    }
+
+    .pmo-chat-header {
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid rgba(31, 41, 55, 0.95);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .pmo-chat-header-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pmo-chat-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-strong);
+    }
+
+    .pmo-chat-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .pmo-chat-context {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--text-soft);
+    }
+
+    .pmo-chat-context-pill {
+      border-radius: 999px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      padding: 1px 6px;
+      background: rgba(15, 23, 42, 0.95);
+    }
+
+    .pmo-chat-close {
+      border-radius: 999px;
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text-soft);
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .pmo-chat-suggestions {
+      padding: 6px 8px 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      border-bottom: 1px solid rgba(31, 41, 55, 0.9);
+    }
+
+    .pmo-chat-suggestion {
+      border-radius: 999px;
+      border: 1px solid rgba(55, 65, 81, 0.95);
+      padding: 3px 8px;
+      font-size: 11px;
+      background: rgba(15, 23, 42, 0.92);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: border-color var(--transition-fast), background var(--transition-fast),
+        color var(--transition-fast), transform var(--transition-fast);
+    }
+
+    .pmo-chat-suggestion:hover {
+      border-color: rgba(56, 189, 248, 0.9);
+      color: #e0f2fe;
+      transform: translateY(-1px);
+      background: rgba(8, 47, 73, 0.9);
+    }
+
+    .pmo-chat-messages {
+      flex: 1;
+      padding: 10px 10px 8px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      scroll-behavior: smooth;
+    }
+
+    .pmo-chat-empty {
+      font-size: 12px;
+      color: var(--text-soft);
+      text-align: center;
+      padding: 16px 10px;
+    }
+
+    .pmo-chat-bubble-row {
+      display: flex;
+      gap: 6px;
+      align-items: flex-end;
+    }
+
+    .pmo-chat-bubble-row.user {
+      justify-content: flex-end;
+    }
+
+    .pmo-chat-bubble {
+      max-width: 82%;
+      border-radius: 18px;
+      padding: 8px 10px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .pmo-chat-bubble.user {
+      background: radial-gradient(circle at 0 0, #38bdf8, #0ea5e9);
+      color: #0b1120;
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 8px 24px rgba(56, 189, 248, 0.65);
+    }
+
+    .pmo-chat-bubble.bot {
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid rgba(55, 65, 81, 0.95);
+      border-bottom-left-radius: 4px;
+    }
+
+    .pmo-chat-meta {
+      font-size: 10px;
+      color: var(--text-soft);
+      margin-top: 2px;
+    }
+
+    .pmo-chat-footer {
+      border-top: 1px solid rgba(31, 41, 55, 0.95);
+      padding: 8px 8px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(15, 23, 42, 0.98);
+    }
+
+    .pmo-chat-input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .pmo-chat-input {
+      flex: 1;
+      border-radius: 12px;
+      border: 1px solid rgba(55, 65, 81, 0.95);
+      padding: 6px 8px;
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text-main);
+      resize: none;
+      outline: none;
+      font-size: 12px;
+      max-height: 80px;
+      min-height: 32px;
+    }
+
+    .pmo-chat-input:focus {
+      border-color: rgba(56, 189, 248, 0.95);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.75);
+    }
+
+    .pmo-chat-send-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: none;
+      background: radial-gradient(circle at 20% 0, #38bdf8, #0f172a);
+      color: #0b1120;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(56, 189, 248, 0.7);
+      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+        background var(--transition-fast), opacity var(--transition-fast);
+      opacity: 0.85;
+    }
+
+    .pmo-chat-send-btn.enabled {
+      opacity: 1;
+    }
+
+    .pmo-chat-send-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 30px rgba(56, 189, 248, 0.86);
+    }
+
+    .pmo-chat-send-btn:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+
+    .pmo-chat-footer-meta {
+      font-size: 10px;
+      color: var(--text-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .pmo-chat-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #22c55e;
+      margin-right: 4px;
+    }
+
+    .pmo-chat-status-dot.offline {
+      background: #f97373;
+    }
+
+    .pmo-typing {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 3px;
+      padding: 4px 6px;
+    }
+
+    .pmo-typing-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--text-soft);
+      animation: pmoTyping 900ms infinite ease-in-out;
+    }
+
+    .pmo-typing-dot:nth-child(2) {
+      animation-delay: 120ms;
+    }
+
+    .pmo-typing-dot:nth-child(3) {
+      animation-delay: 240ms;
+    }
+
+    @keyframes pmoTyping {
+      0%,
+      80%,
+      100% {
+        transform: translateY(0);
+        opacity: 0.7;
+      }
+      40% {
+        transform: translateY(-3px);
+        opacity: 1;
+      }
+    }
+
+    /* RESPONSIVE */
+
+    @media (max-width: 1024px) {
+      .pmo-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .pmo-app {
+        padding: 14px 12px 90px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .pmo-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .pmo-filters {
+        justify-content: flex-start;
+        width: 100%;
+      }
+
+      .pmo-chat-window {
+        width: calc(100% - 20px);
+        right: 10px;
+        bottom: 82px;
+      }
+
+      .pmo-chat-toggle {
+        right: 12px;
+        bottom: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="pmo-app">
+    <!-- HEADER -->
+    <header class="pmo-header">
+      <div class="pmo-header-left">
+        <div class="pmo-logo">P</div>
+        <div class="pmo-title-block">
+          <div class="pmo-title">PMO-AI Portfolio Cockpit</div>
+          <div class="pmo-subtitle">Weekly report insights • Risks • Actions</div>
+        </div>
+      </div>
+      <div class="pmo-filters">
+        <div class="pmo-select-wrapper">
+          <select id="projectFilter" class="pmo-select">
+            <option value="all">All projects</option>
+            <!-- You can preload projects or fetch them dynamically -->
+          </select>
+        </div>
+        <input
+          id="weekFilter"
+          class="pmo-input"
+          type="week"
+          title="Week"
+        />
+        <button id="applyFiltersBtn" class="pmo-btn">
+          <span class="icon">🎯</span>
+          <span>Apply filters</span>
+        </button>
+        <button id="refreshDashboardBtn" class="pmo-btn pmo-btn-primary">
+          <span class="icon">⟳</span>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN -->
+    <main class="pmo-main">
+      <!-- KPI ROW -->
+      <section id="kpiContainer" class="pmo-kpis">
+        <!-- Filled by JS -->
+      </section>
+
+      <!-- 2-COLUMN LAYOUT -->
+      <section class="pmo-layout">
+        <!-- LEFT COLUMN: Summary + Completed + Planned -->
+        <div class="pmo-column pmo-column-left">
+          <!-- Overall Summary -->
+          <article class="pmo-panel" id="overallSummaryPanel">
+            <div class="pmo-panel-header">
+              <div class="pmo-panel-title">Portfolio summary</div>
+              <div class="pmo-panel-tag">AI-generated from weekly reports</div>
+            </div>
+            <div class="pmo-panel-body" id="overallSummaryBody">
+              <p class="pmo-muted">
+                Loading latest summary…
+              </p>
+            </div>
+          </article>
+
+          <!-- Completed Last Week -->
+          <article class="pmo-panel">
+            <div class="pmo-panel-header">
+              <div class="pmo-panel-title">Completed last week</div>
+              <div class="pmo-panel-tag">Achievements & milestones</div>
+            </div>
+            <div class="pmo-panel-body">
+              <ul id="completedList" class="pmo-list">
+                <!-- Filled by JS -->
+              </ul>
+            </div>
+          </article>
+
+          <!-- Planned Next Week -->
+          <article class="pmo-panel">
+            <div class="pmo-panel-header">
+              <div class="pmo-panel-title">Planned for next week</div>
+              <div class="pmo-panel-tag">Forward plan</div>
+            </div>
+            <div class="pmo-panel-body">
+              <ul id="plannedList" class="pmo-list">
+                <!-- Filled by JS -->
+              </ul>
+            </div>
+          </article>
+        </div>
+
+        <!-- RIGHT COLUMN: Projects at Risk + Risks + Issues -->
+        <div class="pmo-column pmo-column-right">
+          <!-- Projects at Risk -->
+          <article class="pmo-panel">
+            <div class="pmo-panel-header">
+              <div class="pmo-panel-title">Projects at risk</div>
+              <div class="pmo-panel-tag">
+                <span id="projectsAtRiskTag">0 projects</span>
+              </div>
+            </div>
+            <div class="pmo-panel-body" id="projectsAtRiskBody">
+              <!-- Filled by JS -->
+            </div>
+          </article>
+
+          <!-- Risks -->
+          <article class="pmo-panel">
+            <div class="pmo-panel-header">
+              <div class="pmo-panel-title">Top risks</div>
+              <div class="pmo-panel-tag">Sorted by impact & urgency</div>
+            </div>
+            <div class="pmo-panel-body">
+              <div class="pmo-table-wrapper">
+                <table class="pmo-table">
+                  <thead>
+                    <tr>
+                      <th>Risk</th>
+                      <th>Project</th>
+                      <th>Score</th>
+                      <th>Owner</th>
+                      <th>Due</th>
+                      <th>Trend</th>
+                    </tr>
+                  </thead>
+                  <tbody id="risksTableBody">
+                    <!-- Filled by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+
+          <!-- Issues -->
+          <article class="pmo-panel">
+            <div class="pmo-panel-header">
+              <div class="pmo-panel-title">Key issues</div>
+              <div class="pmo-panel-tag">Open & blocking</div>
+            </div>
+            <div class="pmo-panel-body">
+              <div class="pmo-table-wrapper">
+                <table class="pmo-table">
+                  <thead>
+                    <tr>
+                      <th>Issue</th>
+                      <th>Project</th>
+                      <th>Severity</th>
+                      <th>Owner</th>
+                      <th>ETA</th>
+                    </tr>
+                  </thead>
+                  <tbody id="issuesTableBody">
+                    <!-- Filled by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- CHAT WIDGET -->
+  <button id="pmoChatToggle" class="pmo-chat-toggle" aria-label="Open PMO-AI chat">
+    <span class="icon">💬</span>
+    <span class="badge">AI</span>
+  </button>
+
+  <div id="pmoChatWindow" class="pmo-chat-window" aria-label="PMO-AI chat">
+    <div class="pmo-chat-header">
+      <div class="pmo-chat-header-main">
+        <div>
+          <div class="pmo-chat-title">PMO-AI Assistant</div>
+          <div class="pmo-chat-subtitle">Ask for summaries, risks, or drafts</div>
+        </div>
+        <button id="pmoChatClose" class="pmo-chat-close" aria-label="Close chat">
+          ✕
+        </button>
+      </div>
+      <div class="pmo-chat-context">
+        <div class="pmo-chat-context-pill" id="chatProjectContext">
+          Project: All
+        </div>
+        <div class="pmo-chat-context-pill" id="chatWeekContext">
+          Week: Current
+        </div>
+      </div>
+    </div>
+    <div class="pmo-chat-suggestions" id="pmoChatSuggestions">
+      <button class="pmo-chat-suggestion" data-template="Summarise this week's portfolio status in 5 bullet points.">
+        Portfolio summary
+      </button>
+      <button class="pmo-chat-suggestion" data-template="List the top 5 risks and who owns them.">
+        Top 5 risks
+      </button>
+      <button class="pmo-chat-suggestion" data-template="Draft an executive summary for the steering committee.">
+        Exec summary
+      </button>
+      <button class="pmo-chat-suggestion" data-template="Draft an update email to stakeholders for my project.">
+        Update email
+      </button>
+    </div>
+    <div id="pmoChatMessages" class="pmo-chat-messages">
+      <div class="pmo-chat-empty">
+        👋 Hi, I’m your PMO-AI assistant.
+        <br />
+        Ask me to summarise this week, highlight risks, or draft communications.
+      </div>
+    </div>
+    <div class="pmo-chat-footer">
+      <div class="pmo-chat-input-row">
+        <textarea
+          id="pmoChatInput"
+          class="pmo-chat-input"
+          rows="1"
+          placeholder="Type a question… (Shift+Enter for a new line)"
+        ></textarea>
+        <button id="pmoChatSend" class="pmo-chat-send-btn" disabled>
+          ➤
+        </button>
+      </div>
+      <div class="pmo-chat-footer-meta">
+        <div>
+          <span class="pmo-chat-status-dot" id="pmoChatStatusDot"></span>
+          <span id="pmoChatStatusText">Connected to PMO-AI</span>
+        </div>
+        <div style="opacity: 0.7">
+          Uses current filters as context
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // -------------------------
+      // CONFIG – ADAPT FOR N8N
+      // -------------------------
+      const CONFIG = {
+  // n8n production webhooks (example)
+  dashboardEndpoint: "https://your-n8n-domain.com/webhook/pmo-dashboard",
+  chatEndpoint: "https://your-n8n-domain.com/webhook/pmo-chat",
+
+  // If you use n8n's test URLs instead, use:
+  // dashboardEndpoint: "https://your-n8n-domain.com/webhook-test/pmo-dashboard",
+  // chatEndpoint: "https://your-n8n-domain.com/webhook-test/pmo-chat",
+};
+
+      // -------------------------
+      // STATE
+      // -------------------------
+      const state = {
+        filters: {
+          projectId: "all",
+          week: null,
+        },
+        dashboardData: null,
+        chat: {
+          isOpen: false,
+          messages: [],
+          isTyping: false,
+          online: true,
+        },
+      };
+
+      // -------------------------
+      // ELEMENTS
+      // -------------------------
+      const projectFilterEl = document.getElementById("projectFilter");
+      const weekFilterEl = document.getElementById("weekFilter");
+      const applyFiltersBtn = document.getElementById("applyFiltersBtn");
+      const refreshDashboardBtn = document.getElementById("refreshDashboardBtn");
+
+      const kpiContainer = document.getElementById("kpiContainer");
+      const overallSummaryBody = document.getElementById("overallSummaryBody");
+      const completedList = document.getElementById("completedList");
+      const plannedList = document.getElementById("plannedList");
+      const projectsAtRiskTag = document.getElementById("projectsAtRiskTag");
+      const projectsAtRiskBody = document.getElementById("projectsAtRiskBody");
+      const risksTableBody = document.getElementById("risksTableBody");
+      const issuesTableBody = document.getElementById("issuesTableBody");
+
+      const chatToggleEl = document.getElementById("pmoChatToggle");
+      const chatWindowEl = document.getElementById("pmoChatWindow");
+      const chatCloseEl = document.getElementById("pmoChatClose");
+      const chatSuggestionsEl = document.getElementById("pmoChatSuggestions");
+      const chatMessagesEl = document.getElementById("pmoChatMessages");
+      const chatInputEl = document.getElementById("pmoChatInput");
+      const chatSendBtnEl = document.getElementById("pmoChatSend");
+      const chatStatusDotEl = document.getElementById("pmoChatStatusDot");
+      const chatStatusTextEl = document.getElementById("pmoChatStatusText");
+      const chatProjectContextEl = document.getElementById("chatProjectContext");
+      const chatWeekContextEl = document.getElementById("chatWeekContext");
+
+      // -------------------------
+      // MOCK DATA (used if backend fails)
+      // -------------------------
+      const mockDashboardData = {
+        kpis: {
+          activeProjects: 7,
+          projectsAtRisk: 2,
+          highSeverityIssues: 4,
+          openRisks: 18,
+          upcomingMilestones: 5,
+        },
+        summary:
+          "Overall the portfolio remains broadly on track. Two projects are currently at Amber/Red due to resource constraints and dependency on external vendors. All critical issues are being managed with workarounds in place for the peak trading period.",
+        projectsAtRisk: [
+          {
+            name: "eCommerce Platform – Peak Readiness",
+            ragStatus: "Red",
+            headline:
+              "Performance testing behind schedule and some key defects still open ahead of peak.",
+            owner: "Ali Said",
+            nextSteps:
+              "Focus triage on P1 defects, confirm additional test cycles, and align daily with vendor.",
+          },
+          {
+            name: "Salesforce Rollout – Wave 2",
+            ragStatus: "Amber",
+            headline:
+              "Integration testing is progressing but some environment instability is delaying cycles.",
+            owner: "Ant Yuen",
+            nextSteps:
+              "Stabilise environments, agree revised cutover dates, and confirm resource cover.",
+          },
+        ],
+        completedLastWeek: [
+          {
+            project: "eCommerce Platform – Peak Readiness",
+            items: [
+              "Delivered November release to production (performance improvements and bug fixes).",
+              "Completed UAT for basket and checkout changes.",
+            ],
+          },
+          {
+            project: "Salesforce Rollout – Wave 2",
+            items: [
+              "Finalised requirements for service workflows.",
+              "Completed data migration dry-run.",
+            ],
+          },
+        ],
+        plannedNextWeek: [
+          {
+            project: "eCommerce Platform – Peak Readiness",
+            items: [
+              "Monitor production closely during peak trading period.",
+              "Prepare emergency hotfix slot to address any critical issues before 17th Dec release.",
+            ],
+          },
+          {
+            project: "Salesforce Rollout – Wave 2",
+            items: [
+              "Complete integration testing and sign-off.",
+              "Freeze backlog for Wave 2 go-live scope.",
+            ],
+          },
+        ],
+        risks: [
+          {
+            id: "R-101",
+            project: "eCommerce Platform – Peak Readiness",
+            description:
+              "Performance bottlenecks in checkout could impact conversion during peak.",
+            probability: "High",
+            impact: "High",
+            score: "High",
+            owner: "Ali Said",
+            dueDate: "2025-11-30",
+            status: "Open",
+            trend: "up",
+          },
+          {
+            id: "R-102",
+            project: "Salesforce Rollout – Wave 2",
+            description:
+              "Environment instability could delay completion of integration testing.",
+            probability: "Medium",
+            impact: "High",
+            score: "Medium",
+            owner: "Ant Yuen",
+            dueDate: "2025-12-10",
+            status: "Mitigating",
+            trend: "flat",
+          },
+          {
+            id: "R-103",
+            project: "Canon Print Subscription",
+            description:
+              "Vendor resource availability may slip build timelines into Q1.",
+            probability: "Medium",
+            impact: "Medium",
+            score: "Medium",
+            owner: "Vendor PM",
+            dueDate: "2026-01-15",
+            status: "Open",
+            trend: "down",
+          },
+        ],
+        issues: [
+          {
+            id: "I-201",
+            project: "eCommerce Platform – Peak Readiness",
+            description:
+              "Intermittent 500 errors on payment gateway during load tests.",
+            severity: "High",
+            owner: "Tech Lead",
+            eta: "2025-11-26",
+            status: "In progress",
+          },
+          {
+            id: "I-202",
+            project: "Salesforce Rollout – Wave 2",
+            description:
+              "Sync failures between SFDC and legacy CRM in some edge cases.",
+            severity: "Medium",
+            owner: "Integration Team",
+            eta: "2025-11-29",
+            status: "In progress",
+          },
+        ],
+        projects: [
+          "All projects",
+          "eCommerce Platform – Peak Readiness",
+          "Salesforce Rollout – Wave 2",
+          "Canon Print Subscription",
+        ],
+      };
+
+      // -------------------------
+      // INITIALISATION
+      // -------------------------
+      function init() {
+        attachEventListeners();
+        applyDefaultWeek();
+        populateProjectFilter(mockDashboardData.projects);
+        syncChatContext();
+        fetchDashboard();
+      }
+
+      function attachEventListeners() {
+        applyFiltersBtn.addEventListener("click", () => {
+          state.filters.projectId = projectFilterEl.value;
+          state.filters.week = weekFilterEl.value || null;
+          syncChatContext();
+          fetchDashboard();
+        });
+
+        refreshDashboardBtn.addEventListener("click", () => {
+          fetchDashboard();
+        });
+
+        chatToggleEl.addEventListener("click", toggleChat);
+        chatCloseEl.addEventListener("click", closeChat);
+
+        chatInputEl.addEventListener("input", () => {
+          const hasText = chatInputEl.value.trim().length > 0;
+          chatSendBtnEl.disabled = !hasText;
+          chatSendBtnEl.classList.toggle("enabled", hasText);
+          autoGrowTextarea(chatInputEl);
+        });
+
+        chatInputEl.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendChat();
+          }
+        });
+
+        chatSendBtnEl.addEventListener("click", sendChat);
+
+        chatSuggestionsEl.addEventListener("click", (e) => {
+          const btn = e.target.closest(".pmo-chat-suggestion");
+          if (!btn) return;
+          const template = btn.getAttribute("data-template");
+          if (!template) return;
+          chatInputEl.value = template;
+          chatInputEl.dispatchEvent(new Event("input"));
+          chatInputEl.focus();
+        });
+      }
+
+      function applyDefaultWeek() {
+        try {
+          const now = new Date();
+          const year = now.getFullYear();
+          const oneJan = new Date(year, 0, 1);
+          const numberOfDays = Math.floor((now - oneJan) / (24 * 60 * 60 * 1000));
+          const week = Math.ceil((now.getDay() + 1 + numberOfDays) / 7);
+          const paddedWeek = String(week).padStart(2, "0");
+          const weekString = `${year}-W${paddedWeek}`;
+          weekFilterEl.value = weekString;
+          state.filters.week = weekString;
+        } catch {
+          state.filters.week = null;
+        }
+      }
+
+      function populateProjectFilter(projects) {
+        if (!Array.isArray(projects)) return;
+        projectFilterEl.innerHTML = "";
+        projects.forEach((name, idx) => {
+          const opt = document.createElement("option");
+          opt.value = idx === 0 ? "all" : name;
+          opt.textContent = name;
+          projectFilterEl.appendChild(opt);
+        });
+      }
+
+      function syncChatContext() {
+        const projectLabel =
+          state.filters.projectId === "all" || !state.filters.projectId
+            ? "All"
+            : state.filters.projectId;
+        chatProjectContextEl.textContent = `Project: ${projectLabel}`;
+
+        const weekLabel = state.filters.week
+          ? state.filters.week
+          : "Current";
+        chatWeekContextEl.textContent = `Week: ${weekLabel}`;
+      }
+
+      // -------------------------
+      // DASHBOARD FETCH & RENDER
+      // -------------------------
+      async function fetchDashboard() {
+        setDashboardLoading(true);
+        try {
+          const resp = await fetch(CONFIG.dashboardEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              projectId: state.filters.projectId,
+              week: state.filters.week,
+            }),
+          });
+
+          if (!resp.ok) {
+            throw new Error("Dashboard API error");
+          }
+
+          const data = await resp.json();
+          state.dashboardData = data;
+          renderDashboard(data);
+        } catch (err) {
+          console.warn("Dashboard fetch failed, using mock data:", err);
+          state.dashboardData = mockDashboardData;
+          renderDashboard(mockDashboardData);
+        } finally {
+          setDashboardLoading(false);
+        }
+      }
+
+      function setDashboardLoading(isLoading) {
+        refreshDashboardBtn.disabled = isLoading;
+        refreshDashboardBtn.style.opacity = isLoading ? "0.7" : "1";
+        refreshDashboardBtn.innerHTML = isLoading
+          ? '<span class="icon">⟳</span><span>Refreshing…</span>'
+          : '<span class="icon">⟳</span><span>Refresh</span>';
+
+        if (isLoading) {
+          overallSummaryBody.innerHTML =
+            '<p class="pmo-muted">Loading latest summary…</p>';
+        }
+      }
+
+      function renderDashboard(data) {
+        if (!data) return;
+        renderKpis(data.kpis || {});
+        renderSummary(data.summary);
+        renderCompletedLastWeek(data.completedLastWeek || []);
+        renderPlannedNextWeek(data.plannedNextWeek || []);
+        renderProjectsAtRisk(data.projectsAtRisk || []);
+        renderRisksTable(data.risks || []);
+        renderIssuesTable(data.issues || []);
+
+        if (Array.isArray(data.projects)) {
+          populateProjectFilter(data.projects);
+        }
+      }
+
+      function renderKpis(kpis) {
+        const {
+          activeProjects = 0,
+          projectsAtRisk = 0,
+          highSeverityIssues = 0,
+          openRisks = 0,
+          upcomingMilestones = 0,
+        } = kpis;
+
+        const cards = [
+          {
+            label: "Active projects",
+            value: activeProjects,
+            subtitle: "In scope for this portfolio",
+            pill: `${projectsAtRisk} at risk`,
+            pillClass: projectsAtRisk > 0 ? "pmo-kpi-pill--danger" : "pmo-kpi-pill--ok",
+          },
+          {
+            label: "High severity issues",
+            value: highSeverityIssues,
+            subtitle: "Open and impacting delivery",
+            pill: highSeverityIssues > 0 ? "Attention" : "Stable",
+            pillClass:
+              highSeverityIssues > 0 ? "pmo-kpi-pill--danger" : "pmo-kpi-pill--ok",
+          },
+          {
+            label: "Open risks",
+            value: openRisks,
+            subtitle: "Tracked across all projects",
+            pill: upcomingMilestones + " upcoming milestones",
+            pillClass: "pmo-kpi-pill",
+          },
+          {
+            label: "Projects at risk",
+            value: projectsAtRisk,
+            subtitle: "Red / Amber projects",
+            pill: projectsAtRisk === 0 ? "On track" : "Requires focus",
+            pillClass:
+              projectsAtRisk > 0 ? "pmo-kpi-pill--danger" : "pmo-kpi-pill--ok",
+          },
+        ];
+
+        kpiContainer.innerHTML = cards
+          .map(
+            (card) => `
+          <div class="pmo-kpi-card">
+            <div class="pmo-kpi-label">${card.label}</div>
+            <div class="pmo-kpi-value">${card.value}</div>
+            <div class="pmo-kpi-meta">
+              <span>${card.subtitle}</span>
+              <span class="pmo-kpi-pill ${card.pillClass}">${card.pill}</span>
+            </div>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      function renderSummary(summary) {
+        if (!summary) {
+          overallSummaryBody.innerHTML =
+            '<p class="pmo-muted">No summary available for the selected filters.</p>';
+          return;
+        }
+
+        overallSummaryBody.innerHTML = `
+          <p>${summary}</p>
+          <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
+            <button class="pmo-btn" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText(this.previousElementSibling.textContent).catch(()=>{})">
+              <span class="icon">📋</span>
+              <span>Copy for email</span>
+            </button>
+          </div>
+        `;
+      }
+
+      function renderCompletedLastWeek(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+          completedList.innerHTML =
+            '<li class="pmo-list-item"><span>No completed items captured for last week.</span></li>';
+          return;
+        }
+
+        completedList.innerHTML = items
+          .map((entry) => {
+            const content = Array.isArray(entry.items)
+              ? entry.items
+                  .map((i) => `<li>• ${escapeHtml(i)}</li>`)
+                  .join("")
+              : "";
+            return `
+              <li class="pmo-list-item">
+                <strong>${escapeHtml(entry.project || "Unnamed project")}</strong>
+                <ul style="margin: 0; padding-left: 12px; list-style: none;">
+                  ${content}
+                </ul>
+              </li>
+            `;
+          })
+          .join("");
+      }
+
+      function renderPlannedNextWeek(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+          plannedList.innerHTML =
+            '<li class="pmo-list-item"><span>No planned activities captured for next week.</span></li>';
+          return;
+        }
+
+        plannedList.innerHTML = items
+          .map((entry) => {
+            const content = Array.isArray(entry.items)
+              ? entry.items
+                  .map((i) => `<li>• ${escapeHtml(i)}</li>`)
+                  .join("")
+              : "";
+            return `
+              <li class="pmo-list-item">
+                <strong>${escapeHtml(entry.project || "Unnamed project")}</strong>
+                <ul style="margin: 0; padding-left: 12px; list-style: none;">
+                  ${content}
+                </ul>
+              </li>
+            `;
+          })
+          .join("");
+      }
+
+      function renderProjectsAtRisk(projects) {
+        const count = projects.length;
+        projectsAtRiskTag.textContent =
+          count === 0 ? "0 projects" : `${count} project${count > 1 ? "s" : ""}`;
+
+        if (count === 0) {
+          projectsAtRiskBody.innerHTML = `
+            <p class="pmo-muted">
+              No projects currently flagged at risk for the selected filters.
+            </p>
+          `;
+          return;
+        }
+
+        projectsAtRiskBody.innerHTML = `
+          <ul class="pmo-list">
+            ${projects
+              .map((p) => {
+                const rag = (p.ragStatus || "").toLowerCase();
+                let ragClass = "pmo-pill";
+                if (rag === "red") ragClass += " red";
+                else if (rag === "amber") ragClass += " amber";
+                else if (rag === "green") ragClass += " green";
+
+                const ragLabel = p.ragStatus || "Unknown";
+                return `
+                  <li class="pmo-list-item">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                      <div>
+                        <strong>${escapeHtml(p.name || "Unnamed project")}</strong>
+                        <span>${escapeHtml(p.headline || "")}</span>
+                        ${
+                          p.nextSteps
+                            ? `<div class="pmo-chip-row">
+                                <span class="pmo-chip">Next steps: ${escapeHtml(
+                                  p.nextSteps
+                                )}</span>
+                              </div>`
+                            : ""
+                        }
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+                        <div class="${ragClass}">
+                          <span class="dot"></span>
+                          <span>${escapeHtml(ragLabel)}</span>
+                        </div>
+                        ${
+                          p.owner
+                            ? `<div class="pmo-chip">Owner: ${escapeHtml(
+                                p.owner
+                              )}</div>`
+                            : ""
+                        }
+                      </div>
+                    </div>
+                  </li>
+                `;
+              })
+              .join("")}
+          </ul>
+        `;
+      }
+
+      function renderRisksTable(risks) {
+        if (!Array.isArray(risks) || risks.length === 0) {
+          risksTableBody.innerHTML = `
+            <tr>
+              <td colspan="6" class="pmo-muted">No risks captured for the selected filters.</td>
+            </tr>
+          `;
+          return;
+        }
+
+        risksTableBody.innerHTML = risks
+          .map((r) => {
+            const score = (r.score || "").toLowerCase();
+            let badgeClass = "pmo-badge";
+            if (score === "high") badgeClass += " red";
+            else if (score === "medium") badgeClass += " amber";
+            else if (score === "low") badgeClass += " green";
+
+            const trend = (r.trend || "flat").toLowerCase();
+            const trendIcon =
+              trend === "up" ? "↗" : trend === "down" ? "↘" : "→";
+            const trendLabel =
+              trend === "up"
+                ? "Worsening"
+                : trend === "down"
+                ? "Improving"
+                : "Stable";
+
+            return `
+            <tr>
+              <td>
+                <div style="font-weight:600;font-size:11px;margin-bottom:2px;">
+                  ${escapeHtml(r.id || "")}
+                </div>
+                <div style="font-size:12px;color:var(--text-muted);">
+                  ${escapeHtml(r.description || "")}
+                </div>
+              </td>
+              <td>${escapeHtml(r.project || "")}</td>
+              <td>
+                <span class="${badgeClass}">
+                  ${escapeHtml(r.score || "n/a")}
+                </span>
+              </td>
+              <td>${escapeHtml(r.owner || "")}</td>
+              <td>${escapeHtml(r.dueDate || "")}</td>
+              <td>
+                <span class="pmo-badge trend">${trendIcon} ${trendLabel}</span>
+              </td>
+            </tr>
+          `;
+          })
+          .join("");
+      }
+
+      function renderIssuesTable(issues) {
+        if (!Array.isArray(issues) || issues.length === 0) {
+          issuesTableBody.innerHTML = `
+            <tr>
+              <td colspan="5" class="pmo-muted">No issues captured for the selected filters.</td>
+            </tr>
+          `;
+          return;
+        }
+
+        issuesTableBody.innerHTML = issues
+          .map((i) => {
+            const sev = (i.severity || "").toLowerCase();
+            let badgeClass = "pmo-badge";
+            if (sev === "high") badgeClass += " red";
+            else if (sev === "medium") badgeClass += " amber";
+            else if (sev === "low") badgeClass += " green";
+
+            return `
+            <tr>
+              <td>
+                <div style="font-weight:600;font-size:11px;margin-bottom:2px;">
+                  ${escapeHtml(i.id || "")}
+                </div>
+                <div style="font-size:12px;color:var(--text-muted);">
+                  ${escapeHtml(i.description || "")}
+                </div>
+              </td>
+              <td>${escapeHtml(i.project || "")}</td>
+              <td><span class="${badgeClass}">${escapeHtml(
+              i.severity || "n/a"
+            )}</span></td>
+              <td>${escapeHtml(i.owner || "")}</td>
+              <td>${escapeHtml(i.eta || "")}</td>
+            </tr>
+          `;
+          })
+          .join("");
+      }
+
+      // -------------------------
+      // CHAT LOGIC
+      // -------------------------
+      function toggleChat() {
+        state.chat.isOpen = !state.chat.isOpen;
+        chatWindowEl.classList.toggle("open", state.chat.isOpen);
+        if (state.chat.isOpen) {
+          chatInputEl.focus();
+          scrollChatToBottom();
+        }
+      }
+
+      function closeChat() {
+        state.chat.isOpen = false;
+        chatWindowEl.classList.remove("open");
+      }
+
+      function autoGrowTextarea(textarea) {
+        textarea.style.height = "auto";
+        textarea.style.height = Math.min(textarea.scrollHeight, 80) + "px";
+      }
+
+      function addChatMessage(role, text, meta) {
+        state.chat.messages.push({ role, text, meta });
+        renderChatMessages();
+      }
+
+      function renderChatMessages() {
+        if (state.chat.messages.length === 0 && !state.chat.isTyping) {
+          chatMessagesEl.innerHTML =
+            '<div class="pmo-chat-empty">👋 Hi, I’m your PMO-AI assistant.<br />Ask me to summarise this week, highlight risks, or draft communications.</div>';
+          return;
+        }
+
+        chatMessagesEl.innerHTML = "";
+
+        state.chat.messages.forEach((msg) => {
+          const row = document.createElement("div");
+          row.className =
+            "pmo-chat-bubble-row " +
+            (msg.role === "user" ? "user" : "bot");
+
+          const bubble = document.createElement("div");
+          bubble.className =
+            "pmo-chat-bubble " +
+            (msg.role === "user" ? "user" : "bot");
+          bubble.textContent = msg.text;
+          row.appendChild(bubble);
+
+          chatMessagesEl.appendChild(row);
+
+          if (msg.meta) {
+            const meta = document.createElement("div");
+            meta.className = "pmo-chat-meta";
+            meta.textContent = msg.meta;
+            chatMessagesEl.appendChild(meta);
+          }
+        });
+
+        if (state.chat.isTyping) {
+          const row = document.createElement("div");
+          row.className = "pmo-chat-bubble-row bot";
+          const bubble = document.createElement("div");
+          bubble.className = "pmo-chat-bubble bot";
+          bubble.innerHTML =
+            '<div class="pmo-typing"><span class="pmo-typing-dot"></span><span class="pmo-typing-dot"></span><span class="pmo-typing-dot"></span></div>';
+          row.appendChild(bubble);
+          chatMessagesEl.appendChild(row);
+        }
+
+        scrollChatToBottom();
+      }
+
+      function scrollChatToBottom() {
+        setTimeout(() => {
+          chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+        }, 10);
+      }
+
+      async function sendChat() {
+        const text = chatInputEl.value.trim();
+        if (!text) return;
+
+        chatInputEl.value = "";
+        chatInputEl.dispatchEvent(new Event("input"));
+
+        addChatMessage("user", text);
+        state.chat.isTyping = true;
+        renderChatMessages();
+
+        try {
+          const resp = await fetch(CONFIG.chatEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              message: text,
+              projectId: state.filters.projectId,
+              week: state.filters.week,
+            }),
+          });
+
+          if (!resp.ok) {
+            throw new Error("Chat API error");
+          }
+
+          const data = await resp.json();
+          // Expecting { answer: string, meta?: string }
+          const answer =
+            typeof data === "object" && data !== null && data.answer
+              ? String(data.answer)
+              : "I’ve received your question, but I didn’t get a clear answer back from the backend.";
+          const meta =
+            typeof data === "object" && data !== null && data.meta
+              ? String(data.meta)
+              : `Context: Project=${state.filters.projectId}, Week=${state.filters.week || "current"}`;
+
+          state.chat.isTyping = false;
+          addChatMessage("assistant", answer, meta);
+        } catch (err) {
+          console.warn("Chat request failed:", err);
+          state.chat.isTyping = false;
+          addChatMessage(
+            "assistant",
+            "I couldn’t reach the PMO-AI backend. Please check the N8N endpoint configuration and try again.",
+            "Offline fallback"
+          );
+          setChatOnline(false);
+        } finally {
+          renderChatMessages();
+        }
+      }
+
+      function setChatOnline(isOnline) {
+        state.chat.online = isOnline;
+        chatStatusDotEl.classList.toggle("offline", !isOnline);
+        chatStatusTextEl.textContent = isOnline
+          ? "Connected to PMO-AI"
+          : "Offline – using local logic";
+      }
+
+      // -------------------------
+      // UTILS
+      // -------------------------
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return "";
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      // -------------------------
+      // BOOTSTRAP
+      // -------------------------
+      init();
+    })();
+  </script>
+</body>
+</html>
