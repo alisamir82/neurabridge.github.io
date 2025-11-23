@@ -848,22 +848,30 @@ a.onclick = (e) => {
 
   function handleWebhookResponse(payload) {
     try {
-      if (typeof payload === "string") {
+            if (typeof payload === "string") {
         const parsed = tryParseJSON(payload);
         if (parsed) return handleWebhookResponse(parsed);
-        appendMessage("bot", payload);
+
+        const safeText = extractAnswerFromMaybeJSON(payload);
+        appendMessage("bot", safeText);
         return;
       }
 
-      const text =
-        payload.answer ||
-        payload.output ||
-        payload.message ||
-        payload.text ||
+            let text =
+        payload.answer ??
+        payload.output ??
+        payload.message ??
+        payload.text ??
         "OK";
 
+      if (typeof text === "string") {
+        text = extractAnswerFromMaybeJSON(text);
+      } else {
+        text = "OK";
+      }
+
       const links = extractLinks(payload, text);
-streamBotMessage(text, links);
+      streamBotMessage(text, links);
 
       if (payload.rich && payload.rich.compare) {
         comparesHistory.push(payload.rich.compare);
@@ -952,6 +960,15 @@ streamBotMessage(text, links);
     } catch {
       return null;
     }
+  }
+
+    function extractAnswerFromMaybeJSON(s) {
+    if (typeof s !== "string") return s;
+    const parsed = tryParseJSON(s);
+    if (parsed && typeof parsed === "object" && typeof parsed.answer === "string") {
+      return parsed.answer;
+    }
+    return s;
   }
 
   function extractLinksFromText(text) {
