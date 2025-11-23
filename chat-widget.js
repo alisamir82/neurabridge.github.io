@@ -932,22 +932,39 @@
       setTimeout(() => $input?.focus(), 0);
     }
   }
-
+function extractAnswerFromMaybeJSON(s) {
+    if (typeof s !== "string") return s;
+    const parsed = tryParseJSON(s);
+    if (parsed && typeof parsed === "object" && typeof parsed.answer === "string") {
+      return parsed.answer;
+    }
+    return s;
+  }
   function handleWebhookResponse(payload) {
     try {
       if (typeof payload === "string") {
-        const parsed = tryParseJSON(payload);
-        if (parsed) return handleWebhookResponse(parsed);
-        addMessage(payload, "bot", { stream: true });
-        addLinks([]);
-        return;
-      }
-      const text =
-        payload.answer ||
-        payload.output ||
-        payload.message ||
-        payload.text ||
+      const parsed = tryParseJSON(payload);
+      if (parsed) return handleWebhookResponse(parsed);
+
+      // Last-resort: never show raw JSON string
+      const safeText = extractAnswerFromMaybeJSON(payload);
+      addMessage(safeText, "bot", { stream: true });
+      addLinks([]);
+      return;
+    }
+            let text =
+        payload.answer ??
+        payload.output ??
+        payload.message ??
+        payload.text ??
         "OK";
+
+      // If the answer itself is a JSON string, unwrap it
+      if (typeof text === "string") {
+        text = extractAnswerFromMaybeJSON(text);
+      } else {
+        text = "OK";
+      }
 
       // main text
       addMessage(text, "bot", { stream: true });
