@@ -1438,26 +1438,36 @@
       // -------------------------
       async function fetchDashboard() {
         setDashboardLoading(true);
-        try {
-          const resp = await fetch(CONFIG.dashboardEndpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              projectId: state.filters.projectId,
-              week: state.filters.week,
-            }),
-          });
+          try {
+    const resp = await fetch(CONFIG.dashboardEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: state.filters.projectId,
+        week: state.filters.week,
+      }),
+    });
 
-          if (!resp.ok) {
-            throw new Error("Dashboard API error");
-          }
+    if (!resp.ok) {
+      throw new Error("Dashboard API error");
+    }
 
-          const data = await resp.json();
-          state.dashboardData = data;
-          renderDashboard(data);
-        } catch (err) {
+    const raw = await resp.json();
+
+    let data = raw;
+    if (raw && typeof raw === "object" && typeof raw.output === "string") {
+      try {
+        data = JSON.parse(raw.output);
+      } catch (e) {
+        console.warn("Failed to parse dashboard JSON from `output`:", e);
+        data = raw;
+      }
+    }
+
+    state.dashboardData = data;
+    renderDashboard(data); catch (err) {
           console.warn("Dashboard fetch failed, using mock data:", err);
           state.dashboardData = mockDashboardData;
           renderDashboard(mockDashboardData);
@@ -1888,18 +1898,25 @@
           }
 
           const data = await resp.json();
-          // Expecting { answer: string, meta?: string }
-          const answer =
-            typeof data === "object" && data !== null && data.answer
-              ? String(data.answer)
-              : "I’ve received your question, but I didn’t get a clear answer back from the backend.";
-          const meta =
-            typeof data === "object" && data !== null && data.meta
-              ? String(data.meta)
-              : `Context: Project=${state.filters.projectId}, Week=${state.filters.week || "current"}`;
 
-          state.chat.isTyping = false;
-          addChatMessage("assistant", answer, meta);
+// Accept either `answer` (our ideal shape) or `text` (n8n AI Agent default)
+const rawAnswer =
+  data && typeof data === "object"
+    ? (data.answer || data.text || data.output || null)
+    : null;
+
+const answer = rawAnswer
+  ? String(rawAnswer)
+  : "I’ve received your question, but I didn’t get a clear answer back from the backend.";
+
+// Try to pull a meta field, otherwise fall back to context
+const meta =
+  data && typeof data === "object" && data.meta
+    ? String(data.meta)
+    : `Context: Project=${state.filters.projectId}, Week=${state.filters.week || "current"}`;
+
+state.chat.isTyping = false;
+addChatMessage("assistant", answer, meta);
         } catch (err) {
           console.warn("Chat request failed:", err);
           state.chat.isTyping = false;
