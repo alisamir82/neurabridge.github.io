@@ -1158,6 +1158,46 @@
   // chatEndpoint: "https://alisamir82.app.n8n.cloud/webhook/28d001b1-6071-4c1e-83b3-2f9448868649",
 };
 
+
+      // ==== CONFIG ====
+const PMO_API = {
+  // TODO: replace with your real n8n URL
+  dashboardWebhook: 'https://alisamir82.app.n8n.cloud/webhook/pmo-dashboard',
+};
+
+// Generic helper to call the dashboard backend
+async function fetchDashboard(currentFilters) {
+  // currentFilters likely already contains project + week from your UI
+  const payload = {
+    projectId: currentFilters.projectId || "all",
+    weekLabel: currentFilters.weekLabel || null,
+    intent: "full_dashboard"
+  };
+
+  try {
+    const res = await fetch(DASHBOARD_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error("Dashboard fetch failed, using mock data:", err);
+    // keep your existing fallback:
+    return getMockDashboardData(); // or whatever you called it
+  }
+}
+
+
+
       // -------------------------
       // STATE
       // -------------------------
