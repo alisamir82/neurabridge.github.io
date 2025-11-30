@@ -929,7 +929,6 @@
         <div class="pmo-select-wrapper">
           <select id="projectFilter" class="pmo-select">
             <option value="all">All projects</option>
-            <!-- You can preload projects or fetch them dynamically -->
           </select>
         </div>
         <input
@@ -952,9 +951,7 @@
     <!-- MAIN -->
     <main class="pmo-main">
       <!-- KPI ROW -->
-      <section id="kpiContainer" class="pmo-kpis">
-        <!-- Filled by JS -->
-      </section>
+      <section id="kpiContainer" class="pmo-kpis"></section>
 
       <!-- 2-COLUMN LAYOUT -->
       <section class="pmo-layout">
@@ -967,9 +964,7 @@
               <div class="pmo-panel-tag">AI-generated from weekly reports</div>
             </div>
             <div class="pmo-panel-body" id="overallSummaryBody">
-              <p class="pmo-muted">
-                Loading latest summary…
-              </p>
+              <p class="pmo-muted">Loading latest summary…</p>
             </div>
           </article>
 
@@ -980,9 +975,7 @@
               <div class="pmo-panel-tag">Achievements & milestones</div>
             </div>
             <div class="pmo-panel-body">
-              <ul id="completedList" class="pmo-list">
-                <!-- Filled by JS -->
-              </ul>
+              <ul id="completedList" class="pmo-list"></ul>
             </div>
           </article>
 
@@ -993,9 +986,7 @@
               <div class="pmo-panel-tag">Forward plan</div>
             </div>
             <div class="pmo-panel-body">
-              <ul id="plannedList" class="pmo-list">
-                <!-- Filled by JS -->
-              </ul>
+              <ul id="plannedList" class="pmo-list"></ul>
             </div>
           </article>
         </div>
@@ -1010,9 +1001,7 @@
                 <span id="projectsAtRiskTag">0 projects</span>
               </div>
             </div>
-            <div class="pmo-panel-body" id="projectsAtRiskBody">
-              <!-- Filled by JS -->
-            </div>
+            <div class="pmo-panel-body" id="projectsAtRiskBody"></div>
           </article>
 
           <!-- Risks -->
@@ -1034,9 +1023,7 @@
                       <th>Trend</th>
                     </tr>
                   </thead>
-                  <tbody id="risksTableBody">
-                    <!-- Filled by JS -->
-                  </tbody>
+                  <tbody id="risksTableBody"></tbody>
                 </table>
               </div>
             </div>
@@ -1060,9 +1047,7 @@
                       <th>ETA</th>
                     </tr>
                   </thead>
-                  <tbody id="issuesTableBody">
-                    <!-- Filled by JS -->
-                  </tbody>
+                  <tbody id="issuesTableBody"></tbody>
                 </table>
               </div>
             </div>
@@ -1146,57 +1131,12 @@
   <script>
     (function () {
       // -------------------------
-      // CONFIG – ADAPT FOR N8N
+      // CONFIG – N8N ENDPOINTS
       // -------------------------
       const CONFIG = {
-  // n8n production webhooks (example)
-  dashboardEndpoint: "https://alisamir82.app.n8n.cloud/webhook/pmo-dashboard",
-  chatEndpoint: "https://alisamir82.app.n8n.cloud/webhook/pmo-chat",
-
-  // If you use n8n's test URLs instead, use:
-  // dashboardEndpoint: "https://alisamir82.app.n8n.cloud/webhook/28d001b1-6071-4c1e-83b3-2f9448868649",
-  // chatEndpoint: "https://alisamir82.app.n8n.cloud/webhook/28d001b1-6071-4c1e-83b3-2f9448868649",
-};
-
-
-      // ==== CONFIG ====
-const PMO_API = {
-  // TODO: replace with your real n8n URL
-  dashboardWebhook: 'https://alisamir82.app.n8n.cloud/webhook/pmo-dashboard',
-};
-
-// Generic helper to call the dashboard backend
-async function fetchDashboard(currentFilters) {
-  // currentFilters likely already contains project + week from your UI
-  const payload = {
-    projectId: currentFilters.projectId || "all",
-    weekLabel: currentFilters.weekLabel || null,
-    intent: "full_dashboard"
-  };
-
-  try {
-    const res = await fetch(DASHBOARD_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error("Dashboard fetch failed, using mock data:", err);
-    // keep your existing fallback:
-    return getMockDashboardData(); // or whatever you called it
-  }
-}
-
-
+        dashboardEndpoint: "https://alisamir82.app.n8n.cloud/webhook/pmo-dashboard",
+        chatEndpoint: "https://alisamir82.app.n8n.cloud/webhook/pmo-chat",
+      };
 
       // -------------------------
       // STATE
@@ -1245,7 +1185,7 @@ async function fetchDashboard(currentFilters) {
       const chatWeekContextEl = document.getElementById("chatWeekContext");
 
       // -------------------------
-      // MOCK DATA (used if backend fails)
+      // MOCK DATA (fallback)
       // -------------------------
       const mockDashboardData = {
         kpis: {
@@ -1381,13 +1321,14 @@ async function fetchDashboard(currentFilters) {
       };
 
       // -------------------------
-      // INITIALISATION
+      // INIT
       // -------------------------
       function init() {
         attachEventListeners();
         applyDefaultWeek();
         populateProjectFilter(mockDashboardData.projects);
         syncChatContext();
+        setChatOnline(true);
         fetchDashboard();
       }
 
@@ -1451,11 +1392,13 @@ async function fetchDashboard(currentFilters) {
 
       function populateProjectFilter(projects) {
         if (!Array.isArray(projects)) return;
+        const current = state.filters.projectId || "all";
         projectFilterEl.innerHTML = "";
         projects.forEach((name, idx) => {
           const opt = document.createElement("option");
           opt.value = idx === 0 ? "all" : name;
           opt.textContent = name;
+          if (opt.value === current) opt.selected = true;
           projectFilterEl.appendChild(opt);
         });
       }
@@ -1467,49 +1410,55 @@ async function fetchDashboard(currentFilters) {
             : state.filters.projectId;
         chatProjectContextEl.textContent = `Project: ${projectLabel}`;
 
-        const weekLabel = state.filters.week
-          ? state.filters.week
-          : "Current";
+        const weekLabel = state.filters.week ? state.filters.week : "Current";
         chatWeekContextEl.textContent = `Week: ${weekLabel}`;
       }
 
       // -------------------------
-      // DASHBOARD FETCH & RENDER
+      // DASHBOARD FETCH
       // -------------------------
       async function fetchDashboard() {
         setDashboardLoading(true);
-          try {
-    const resp = await fetch(CONFIG.dashboardEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId: state.filters.projectId,
-        week: state.filters.week,
-      }),
-    });
+        try {
+          const resp = await fetch(CONFIG.dashboardEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId: state.filters.projectId,
+              week: state.filters.week,
+            }),
+          });
 
-    if (!resp.ok) {
-      throw new Error("Dashboard API error");
-    }
+          if (!resp.ok) {
+            throw new Error(`Dashboard API error ${resp.status}`);
+          }
 
-    const raw = await resp.json();
+          const raw = await resp.json();
+          let data = raw;
 
-    let data = raw;
-    if (raw && typeof raw === "object" && typeof raw.output === "string") {
-      try {
-        data = JSON.parse(raw.output);
-      } catch (e) {
-        console.warn("Failed to parse dashboard JSON from `output`:", e);
-        data = raw;
-      }
-    }
+          // n8n AI Agent + Structured Output Parser often returns { output: "<json-string>" }
+          if (raw && typeof raw === "object") {
+            if (typeof raw.output === "string") {
+              try {
+                data = JSON.parse(raw.output);
+              } catch (e) {
+                console.warn("Failed to parse JSON from `output` string:", e);
+                data = raw;
+              }
+            } else if (raw.output && typeof raw.output === "object") {
+              data = raw.output;
+            } else if (raw.data && typeof raw.data === "object") {
+              data = raw.data;
+            }
+          }
 
-    state.dashboardData = data;
-    renderDashboard(data); catch (err) {
+          state.dashboardData = data;
+          setChatOnline(true);
+          renderDashboard(data);
+        } catch (err) {
           console.warn("Dashboard fetch failed, using mock data:", err);
           state.dashboardData = mockDashboardData;
+          setChatOnline(false);
           renderDashboard(mockDashboardData);
         } finally {
           setDashboardLoading(false);
@@ -1559,7 +1508,8 @@ async function fetchDashboard(currentFilters) {
             value: activeProjects,
             subtitle: "In scope for this portfolio",
             pill: `${projectsAtRisk} at risk`,
-            pillClass: projectsAtRisk > 0 ? "pmo-kpi-pill--danger" : "pmo-kpi-pill--ok",
+            pillClass:
+              projectsAtRisk > 0 ? "pmo-kpi-pill--danger" : "pmo-kpi-pill--ok",
           },
           {
             label: "High severity issues",
@@ -1589,15 +1539,15 @@ async function fetchDashboard(currentFilters) {
         kpiContainer.innerHTML = cards
           .map(
             (card) => `
-          <div class="pmo-kpi-card">
-            <div class="pmo-kpi-label">${card.label}</div>
-            <div class="pmo-kpi-value">${card.value}</div>
-            <div class="pmo-kpi-meta">
-              <span>${card.subtitle}</span>
-              <span class="pmo-kpi-pill ${card.pillClass}">${card.pill}</span>
+            <div class="pmo-kpi-card">
+              <div class="pmo-kpi-label">${card.label}</div>
+              <div class="pmo-kpi-value">${card.value}</div>
+              <div class="pmo-kpi-meta">
+                <span>${card.subtitle}</span>
+                <span class="pmo-kpi-pill ${card.pillClass}">${card.pill}</span>
+              </div>
             </div>
-          </div>
-        `
+          `
           )
           .join("");
       }
@@ -1609,10 +1559,12 @@ async function fetchDashboard(currentFilters) {
           return;
         }
 
+        const safeSummary = escapeHtml(summary);
         overallSummaryBody.innerHTML = `
-          <p>${summary}</p>
+          <p>${safeSummary}</p>
           <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
-            <button class="pmo-btn" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText(this.previousElementSibling.textContent).catch(()=>{})">
+            <button class="pmo-btn" type="button"
+              onclick="navigator.clipboard && navigator.clipboard.writeText('${safeSummary.replace(/'/g, "\\'")}').catch(()=>{})">
               <span class="icon">📋</span>
               <span>Copy for email</span>
             </button>
@@ -1820,8 +1772,8 @@ async function fetchDashboard(currentFilters) {
               </td>
               <td>${escapeHtml(i.project || "")}</td>
               <td><span class="${badgeClass}">${escapeHtml(
-              i.severity || "n/a"
-            )}</span></td>
+                i.severity || "n/a"
+              )}</span></td>
               <td>${escapeHtml(i.owner || "")}</td>
               <td>${escapeHtml(i.eta || "")}</td>
             </tr>
@@ -1934,38 +1886,38 @@ async function fetchDashboard(currentFilters) {
           });
 
           if (!resp.ok) {
-            throw new Error("Chat API error");
+            throw new Error(`Chat API error ${resp.status}`);
           }
 
           const data = await resp.json();
 
-// Accept either `answer` (our ideal shape) or `text` (n8n AI Agent default)
-const rawAnswer =
-  data && typeof data === "object"
-    ? (data.answer || data.text || data.output || null)
-    : null;
+          // Accept either `answer` (preferred) or `text` / `output`
+          const rawAnswer =
+            data && typeof data === "object"
+              ? (data.answer || data.text || data.output || null)
+              : null;
 
-const answer = rawAnswer
-  ? String(rawAnswer)
-  : "I’ve received your question, but I didn’t get a clear answer back from the backend.";
+          const answer = rawAnswer
+            ? String(rawAnswer)
+            : "I’ve received your question, but I didn’t get a clear answer back from the backend.";
 
-// Try to pull a meta field, otherwise fall back to context
-const meta =
-  data && typeof data === "object" && data.meta
-    ? String(data.meta)
-    : `Context: Project=${state.filters.projectId}, Week=${state.filters.week || "current"}`;
+          const meta =
+            data && typeof data === "object" && data.meta
+              ? String(data.meta)
+              : `Context: Project=${state.filters.projectId}, Week=${state.filters.week || "current"}`;
 
-state.chat.isTyping = false;
-addChatMessage("assistant", answer, meta);
+          state.chat.isTyping = false;
+          setChatOnline(true);
+          addChatMessage("assistant", answer, meta);
         } catch (err) {
           console.warn("Chat request failed:", err);
           state.chat.isTyping = false;
+          setChatOnline(false);
           addChatMessage(
             "assistant",
-            "I couldn’t reach the PMO-AI backend. Please check the N8N endpoint configuration and try again.",
+            "I couldn’t reach the PMO-AI backend. Please check the n8n endpoint configuration and try again.",
             "Offline fallback"
           );
-          setChatOnline(false);
         } finally {
           renderChatMessages();
         }
