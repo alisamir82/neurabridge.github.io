@@ -1196,7 +1196,7 @@
         upcomingMilestones: 5,
       },
       summary:
-        "Overall the portfolio remains broadly on track. Two projects are currently at Amber/Red due to resource constraints and dependency on external vendors. All critical issues are being managed with workarounds in place for the peak trading period.",
+        "THIS IS A MOCK UP Overall the portfolio remains broadly on track. Two projects are currently at Amber/Red due to resource constraints and dependency on external vendors. All critical issues are being managed with workarounds in place for the peak trading period.",
       projectsAtRisk: [
         {
           name: "eCommerce Platform – Peak Readiness",
@@ -1418,78 +1418,79 @@
     // DASHBOARD FETCH (UPDATED)
     // -------------------------
     async function fetchDashboard() {
-      setDashboardLoading(true);
-      try {
-        const resp = await fetch(CONFIG.dashboardEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: state.filters.projectId,
-            week: state.filters.week,
-          }),
-        });
+  setDashboardLoading(true);
+  try {
+    const resp = await fetch(CONFIG.dashboardEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: state.filters.projectId,
+        week: state.filters.week,
+      }),
+    });
 
-        const bodyText = await resp.text();
+    if (!resp.ok) {
+      throw new Error(`Dashboard API error ${resp.status}`);
+    }
 
-        if (!resp.ok) {
-          throw new Error(
-            `Dashboard API error ${resp.status}: ${bodyText.slice(0, 200)}`
-          );
+    const raw = await resp.json();
+    console.log("Dashboard raw response from n8n >", raw);
+
+    let data = null;
+
+    if (raw && typeof raw === "object") {
+      // Case 1: AI Agent returned { output: "<json-string>" }
+      if (typeof raw.output === "string") {
+        const s = raw.output.trim();
+        if (!s) {
+          // empty string -> treat as error so we fall back to mock
+          throw new Error("Empty `output` from n8n (Structured Output probably failed).");
         }
-
-        let raw;
         try {
-          raw = JSON.parse(bodyText);
-        } catch {
-          // If n8n returns plain text (for example, from an AI Agent),
-          // treat it as { output: "<that text>" }
-          raw = { output: bodyText };
+          data = JSON.parse(s);
+        } catch (e) {
+          console.warn("Failed to parse JSON from `output` string:", e);
+          throw e;
         }
-
-        console.log("Dashboard raw response from n8n:", raw);
-
-        let data = raw;
-
-        // n8n AI Agent + Structured Output Parser common patterns
-        if (raw && typeof raw === "object") {
-          if (typeof raw.output === "string") {
-            try {
-              data = JSON.parse(raw.output);
-            } catch (e) {
-              console.warn("Failed to parse JSON from `output` string:", e);
-              // if output is just a human summary string, keep it as summary
-              data = {
-                summary: raw.output,
-                kpis: {},
-                completedLastWeek: [],
-                plannedNextWeek: [],
-                projectsAtRisk: [],
-                risks: [],
-                issues: [],
-                projects: mockDashboardData.projects,
-              };
-            }
-          } else if (raw.output && typeof raw.output === "object") {
-            data = raw.output;
-          } else if (raw.data && typeof raw.data === "object") {
-            data = raw.data;
-          }
-        }
-
-        console.log("Dashboard parsed data:", data);
-
-        state.dashboardData = data;
-        setChatOnline(true);
-        renderDashboard(data);
-      } catch (err) {
-        console.warn("Dashboard fetch failed, using mock data:", err);
-        state.dashboardData = mockDashboardData;
-        setChatOnline(false);
-        renderDashboard(mockDashboardData);
-      } finally {
-        setDashboardLoading(false);
+      }
+      // Case 2: AI Agent already returned an object in output
+      else if (raw.output && typeof raw.output === "object") {
+        data = raw.output;
+      }
+      // Case 3: Respond to Webhook already sends the final object in `data`
+      else if (raw.data && typeof raw.data === "object") {
+        data = raw.data;
+      }
+      // Case 4: Respond to Webhook sends the dashboard object at the top level
+      else if (isValidDashboardPayload(raw)) {
+        data = raw;
       }
     }
+
+    if (!data || !isValidDashboardPayload(data)) {
+      throw new Error("Invalid dashboard payload from n8n.");
+    }
+
+    state.dashboardData = data;
+    setChatOnline(true);
+    renderDashboard(data);
+  } catch (err) {
+    console.warn("Dashboard fetch failed, using mock data:", err);
+    state.dashboardData = mockDashboardData;
+    setChatOnline(false);
+    renderDashboard(mockDashboardData);
+  } finally {
+    setDashboardLoading(false);
+  }
+}
+
+// Very light validation so we don't treat random objects as dashboards
+function isValidDashboardPayload(d) {
+  if (!d || typeof d !== "object") return false;
+  // kpis + summary are mandatory, the arrays are optional
+  if (!("kpis" in d) || !("summary" in d)) return false;
+  return true;
+}
 
     function setDashboardLoading(isLoading) {
       refreshDashboardBtn.disabled = isLoading;
@@ -1579,24 +1580,24 @@
     }
 
     function renderSummary(summary) {
-      if (!summary) {
-        overallSummaryBody.innerHTML =
-          '<p class="pmo-muted">No summary available for the selected filters.</p>';
-        return;
-      }
+  if (!summary || String(summary).trim().toLowerCase() === "unknown") {
+    overallSummaryBody.innerHTML =
+      '<p class="pmo-muted">No summary available for the selected filters.</p>';
+    return;
+  }
 
-      const safeSummary = escapeHtml(summary);
-      overallSummaryBody.innerHTML = `
-        <p>${safeSummary}</p>
-        <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
-          <button class="pmo-btn" type="button"
-            onclick="navigator.clipboard && navigator.clipboard.writeText('${safeSummary.replace(/'/g, "\\'")}').catch(()=>{})">
-            <span class="icon">📋</span>
-            <span>Copy for email</span>
-          </button>
-        </div>
-      `;
-    }
+  const safeSummary = escapeHtml(summary);
+  overallSummaryBody.innerHTML = `
+    <p>${safeSummary}</p>
+    <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
+      <button class="pmo-btn" type="button"
+        onclick="navigator.clipboard && navigator.clipboard.writeText('${safeSummary.replace(/'/g, "\\'")}').catch(()=>{})">
+        <span class="icon">📋</span>
+        <span>Copy for email</span>
+      </button>
+    </div>
+  `;
+}
 
     function renderCompletedLastWeek(items) {
       if (!Array.isArray(items) || items.length === 0) {
