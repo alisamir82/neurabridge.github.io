@@ -1137,7 +1137,7 @@
       dashboardEndpoint: "https://alisamir82.app.n8n.cloud/webhook/pmo-dashboard",
       chatEndpoint: "https://alisamir82.app.n8n.cloud/webhook/pmo-chat",
     };
-
+const USE_MOCK_DASHBOARD = true;
     // -------------------------
     // STATE
     // -------------------------
@@ -1417,62 +1417,64 @@
     // -------------------------
     // DASHBOARD FETCH (UPDATED)
     // -------------------------
-    async function fetchDashboard() {
+    // -------------------------
+// DASHBOARD FETCH (FORCED MOCK)
+// -------------------------
+async function fetchDashboard() {
   setDashboardLoading(true);
+
   try {
-    const resp = await fetch(CONFIG.dashboardEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: state.filters.projectId,
-        week: state.filters.week,
-      }),
-    });
+    let data;
 
-    if (!resp.ok) {
-      throw new Error(`Dashboard API error ${resp.status}`);
-    }
+    if (USE_MOCK_DASHBOARD) {
+      // Always use the mock data
+      data = mockDashboardData;
+      setChatOnline(false); // show "Offline – using local logic"
+      console.log("Using mock dashboard data");
+    } else {
+      // --- ORIGINAL LIVE CALL PATH (kept for future use) ---
+      const resp = await fetch(CONFIG.dashboardEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: state.filters.projectId,
+          week: state.filters.week,
+        }),
+      });
 
-    const raw = await resp.json();
-    console.log("Dashboard raw response from n8n >", raw);
+      if (!resp.ok) {
+        throw new Error(`Dashboard API error ${resp.status}`);
+      }
 
-    let data = null;
+      const raw = await resp.json();
+      console.log("Dashboard raw response from n8n >", raw);
 
-    if (raw && typeof raw === "object") {
-      // Case 1: AI Agent returned { output: "<json-string>" }
-      if (typeof raw.output === "string") {
-        const s = raw.output.trim();
-        if (!s) {
-          // empty string -> treat as error so we fall back to mock
-          throw new Error("Empty `output` from n8n (Structured Output probably failed).");
-        }
-        try {
+      if (raw && typeof raw === "object") {
+        if (typeof raw.output === "string") {
+          const s = raw.output.trim();
+          if (!s) {
+            throw new Error(
+              "Empty `output` from n8n (Structured Output probably failed)."
+            );
+          }
           data = JSON.parse(s);
-        } catch (e) {
-          console.warn("Failed to parse JSON from `output` string:", e);
-          throw e;
+        } else if (raw.output && typeof raw.output === "object") {
+          data = raw.output;
+        } else if (raw.data && typeof raw.data === "object") {
+          data = raw.data;
+        } else if (isValidDashboardPayload(raw)) {
+          data = raw;
         }
       }
-      // Case 2: AI Agent already returned an object in output
-      else if (raw.output && typeof raw.output === "object") {
-        data = raw.output;
-      }
-      // Case 3: Respond to Webhook already sends the final object in `data`
-      else if (raw.data && typeof raw.data === "object") {
-        data = raw.data;
-      }
-      // Case 4: Respond to Webhook sends the dashboard object at the top level
-      else if (isValidDashboardPayload(raw)) {
-        data = raw;
-      }
-    }
 
-    if (!data || !isValidDashboardPayload(data)) {
-      throw new Error("Invalid dashboard payload from n8n.");
+      if (!data || !isValidDashboardPayload(data)) {
+        throw new Error("Invalid dashboard payload from n8n.");
+      }
+
+      setChatOnline(true);
     }
 
     state.dashboardData = data;
-    setChatOnline(true);
     renderDashboard(data);
   } catch (err) {
     console.warn("Dashboard fetch failed, using mock data:", err);
