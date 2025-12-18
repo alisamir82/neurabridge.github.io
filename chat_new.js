@@ -11,25 +11,40 @@
     placeholder: currentScript?.dataset.placeholder || "Ask me anything…",
     chatId: currentScript?.dataset.chatId || null,
 
-    // legacy popup mode (still supported, but not default)
+    // legacy popup mode (still supported if you set linkBehavior="popup")
     popup: (currentScript?.dataset.popup || "false").toLowerCase() === "true",
     closeOnNavigate: (currentScript?.dataset.closeOnNavigate || "false").toLowerCase() === "true",
     pageUrl: currentScript?.dataset.pageUrl || window.location.href,
 
-    // NEW: draggable panel (default true)
     draggable: (currentScript?.dataset.draggable || "true").toLowerCase() !== "false",
 
-    // NEW: link behavior (better default than popup handoff)
-    // - "new-tab" (default): open url in a new tab; keep chat on page
-    // - "same-tab": navigate current tab
-    // - "popup": old behavior (open popup chat window + navigate current page)
-    linkBehavior: (currentScript?.dataset.linkBehavior || "new-tab").toLowerCase(),
+    // NEW behaviors:
+    // "in-widget" (Option 3) - open links inside widget iframe overlay
+    // "new-tab" - open in a new tab
+    // "same-tab" - navigate current tab
+    // "popup" - old popup handoff
+    linkBehavior: (currentScript?.dataset.linkBehavior || "in-widget").toLowerCase(),
   };
 
-  // ---- language state ----
-  const LANG_KEY = `chatWidget:lang:${CFG.chatId || "default"}`;
-  const SUPPORTED_LANGS = ["en", "de", "fr"];
+  // ---- IDs & keys ----
+  if (!CFG.chatId) {
+    const fromUrl = new URLSearchParams(location.search).get("chatId");
+    const makeId = () =>
+      crypto.randomUUID?.() ||
+      (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+    CFG.chatId = fromUrl || localStorage.getItem("chatWidgetChatId") || makeId();
+    localStorage.setItem("chatWidgetChatId", CFG.chatId);
+  }
 
+  const STORAGE_KEY = `chatWidget:transcript:${CFG.chatId}`;
+  const BUTTONS_KEY = `chatWidget:buttons:${CFG.chatId}`;
+  const OPEN_KEY = `chatWidget:open:${CFG.chatId}`;
+  const POS_KEY = `chatWidget:pos:${CFG.chatId}:v1`;
+  const LANG_KEY = `chatWidget:lang:${CFG.chatId}`;
+  const WEBVIEW_KEY = `chatWidget:webview:lastUrl:${CFG.chatId}`;
+
+  // ---- language state ----
+  const SUPPORTED_LANGS = ["en", "de", "fr"];
   let currentLang = (() => {
     try {
       const saved = localStorage.getItem(LANG_KEY);
@@ -45,25 +60,7 @@
     updateLanguageButtons();
   }
 
-  // ---- IDs & keys ----
-  if (!CFG.chatId) {
-    const fromUrl = new URLSearchParams(location.search).get("chatId");
-    const makeId = () =>
-      crypto.randomUUID?.() ||
-      (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
-    CFG.chatId = fromUrl || localStorage.getItem("chatWidgetChatId") || makeId();
-    localStorage.setItem("chatWidgetChatId", CFG.chatId);
-  }
-
-  const STORAGE_KEY = `chatWidget:transcript:${CFG.chatId}`;
-  const HANDOFF_KEY = `chatWidget:handoffJustNavigated:${CFG.chatId}`;
-  const BUTTONS_KEY = `chatWidget:buttons:${CFG.chatId}`;
-  const OPEN_KEY = `chatWidget:open:${CFG.chatId}`;
-  const POS_KEY = `chatWidget:pos:${CFG.chatId}:v1`;
-
-  let comparesHistory = [];
-
-  // ---- host container (full-viewport overlay, pointerEvents none) ----
+  // ---- host container (full viewport overlay, pointerEvents none) ----
   const host = document.createElement("div");
   host.style.position = "fixed";
   host.style.inset = "0";
@@ -73,6 +70,52 @@
 
   const shadow = host.attachShadow({ mode: "open" });
 
+  // ---- utilities ----
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (m) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[m]),
+    );
+  }
+
+  function scrollToBottom() {
+    requestAnimationFrame(() => {
+      $messages.scrollTop = $messages.scrollHeight;
+    });
+  }
+
+  function normalizeText(s) {
+    return String(s)
+      .replace(/\*\*(.*?)\*\*/g, "$1")
+      .replace(/__(.*?)__/g, "$1")
+      .replace(/<\/?[^>]+>/g, "");
+  }
+
+  function tryParseJSON(s) {
+    const t = String(s).trim();
+    if (!t || (t[0] !== "{" && t[0] !== "[")) return null;
+    try { return JSON.parse(t); } catch { return null; }
+  }
+
+  function safeUrl(u) {
+    // Allow only http/https (avoid javascript:, data:, etc.)
+    try {
+      const url = new URL(u, window.location.href);
+      if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ---- template ----
   const wrapper = document.createElement("div");
   wrapper.innerHTML = `
     <style>
@@ -97,8 +140,6 @@
         border:2px solid #ffffff;
         z-index: 2147483646;
       }
-
-      /* bubble positioning */
       .bubble.br { right:20px; bottom:20px; }
       .bubble.bl { left:20px; bottom:20px; }
 
@@ -117,7 +158,6 @@
         min-width:320px; min-height:360px;
         z-index: 2147483646;
       }
-
       .panel.open{
         display:flex;
         flex-direction:column;
@@ -139,7 +179,6 @@
         display:flex;
         align-items:center;
         gap:8px;
-
         ${CFG.draggable ? `cursor: grab; user-select:none; touch-action:none;` : ``}
       }
       .header.dragging{ cursor: grabbing; }
@@ -163,12 +202,7 @@
         justify-content:center;
       }
 
-      .lang-switch{
-        display:flex;
-        align-items:center;
-        gap:4px;
-        margin-right:4px;
-      }
+      .lang-switch{ display:flex; align-items:center; gap:4px; margin-right:4px; }
       .lang-btn{
         border:none;
         background:transparent;
@@ -190,6 +224,7 @@
         flex-direction:column;
         min-height:0;
         height:100%;
+        position: relative; /* needed for webview overlay */
       }
 
       .messages{
@@ -259,9 +294,7 @@
         align-items:center;
         gap:4px;
       }
-      .typing-indicator.show{
-        display:inline-flex;
-      }
+      .typing-indicator.show{ display:inline-flex; }
       .typing-indicator span{
         width:8px;
         height:8px;
@@ -273,91 +306,9 @@
       }
       .typing-indicator span:nth-child(2){ animation-delay:0.15s; }
       .typing-indicator span:nth-child(3){ animation-delay:0.3s; }
-
       @keyframes typing-bounce{
         0%,80%,100%{ transform:translateY(0); opacity:.4; }
         40%{ transform:translateY(-3px); opacity:1; }
-      }
-
-      /* Comparison block */
-      .compare-block{
-        margin:4px 0 10px;
-        padding:10px 10px 8px;
-        background:#ffffff;
-        border-radius:12px;
-        border:1px solid #e2e4ea;
-        font-size:12px;
-      }
-      .compare-header{
-        display:flex;
-        flex-direction:column;
-        gap:6px;
-        margin-bottom:6px;
-      }
-      .compare-title{
-        font-size:13px;
-        font-weight:600;
-        color:#111827;
-      }
-      .compare-products{
-        display:grid;
-        grid-template-columns:1fr 1fr;
-        gap:8px;
-      }
-      .compare-prod{
-        text-align:left;
-      }
-      .compare-prod-name{
-        font-weight:600;
-        font-size:12px;
-        color:#111827;
-        margin-bottom:2px;
-      }
-      .compare-prod-tagline{
-        font-size:11px;
-        color:#4b5563;
-        margin-bottom:4px;
-      }
-      .compare-prod-pill{
-        display:inline-block;
-        padding:2px 6px;
-        border-radius:999px;
-        border:1px solid #e5e7eb;
-        font-size:10px;
-        color:#6b7280;
-        background:#f9fafb;
-      }
-      .compare-rows{
-        border-top:1px solid #e5e7eb;
-        margin-top:6px;
-        padding-top:6px;
-      }
-      .compare-row{
-        padding:6px 0;
-        border-bottom:1px solid #f3f4f6;
-      }
-      .compare-row:last-child{
-        border-bottom:none;
-      }
-      .compare-label{
-        font-size:11px;
-        font-weight:500;
-        color:#374151;
-        margin-bottom:3px;
-      }
-      .compare-label strong{
-        font-weight:600;
-        color:#111827;
-      }
-      .compare-values{
-        display:grid;
-        grid-template-columns:1fr 1fr;
-        gap:6px;
-        font-size:11px;
-        color:#111827;
-      }
-      .compare-value{
-        white-space:pre-wrap;
       }
 
       .footer{
@@ -399,32 +350,81 @@
         align-items:center;
         justify-content:center;
       }
-      .send:disabled{
-        opacity:.6;
-        cursor:not-allowed;
-      }
+      .send:disabled{ opacity:.6; cursor:not-allowed; }
 
-      .resize-handle{
-        position:absolute;
-        z-index:5;
-      }
+      .resize-handle{ position:absolute; z-index:5; }
       .resize-handle.top{
         top:0; left:10px; right:10px;
-        height:10px;
-        cursor:ns-resize;
+        height:10px; cursor:ns-resize;
       }
       .resize-handle.left{
         left:0; top:10px; bottom:10px;
-        width:10px;
-        cursor:ew-resize;
+        width:10px; cursor:ew-resize;
       }
       .resize-handle.corner{
         top:0; left:0;
         width:14px;height:14px;
         cursor:nwse-resize;
       }
-      .resize-handle:hover{
-        background:rgba(0,0,0,.03);
+      .resize-handle:hover{ background:rgba(0,0,0,.03); }
+
+      /* ---------- Webview overlay (Option 3) ---------- */
+      .webview{
+        position:absolute;
+        inset:0;
+        background:#ffffff;
+        display:none;
+        flex-direction:column;
+        z-index: 50;
+        border-radius: 0; /* panel already has radius */
+      }
+      .webview.show{ display:flex; }
+
+      .webview-topbar{
+        height:44px;
+        display:flex;
+        align-items:center;
+        gap:8px;
+        padding: 8px;
+        border-bottom: 1px solid rgba(0,0,0,.08);
+        background:#ffffff;
+      }
+      .wv-btn{
+        border:1px solid rgba(0,0,0,.10);
+        background:#ffffff;
+        border-radius: 10px;
+        padding: 6px 10px;
+        cursor:pointer;
+        font-weight:700;
+        font-size:12px;
+        color:#111827;
+      }
+      .wv-btn:hover{ background: rgba(0,0,0,.03); }
+
+      .wv-url{
+        flex:1;
+        font-size:12px;
+        color: rgba(17,24,39,.60);
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+        padding: 0 6px;
+      }
+
+      .wv-frame{
+        flex:1;
+        border:0;
+        width:100%;
+        height:100%;
+        background:#fff;
+      }
+
+      .wv-note{
+        padding: 8px 10px;
+        font-size: 11px;
+        color: rgba(17,24,39,.65);
+        border-top: 1px solid rgba(0,0,0,.06);
+        background: #fafafa;
       }
     </style>
 
@@ -459,6 +459,20 @@
           <textarea class="textarea" data-input rows="1" placeholder="${escapeHtml(CFG.placeholder)}"></textarea>
           <button class="send" data-send>▶</button>
         </div>
+
+        <!-- Webview overlay (Option 3) -->
+        <div class="webview" data-webview>
+          <div class="webview-topbar">
+            <button class="wv-btn" type="button" data-wv-back>← Back</button>
+            <div class="wv-url" data-wv-url title=""></div>
+            <button class="wv-btn" type="button" data-wv-newtab>Open ↗</button>
+            <button class="wv-btn" type="button" data-wv-close>✕</button>
+          </div>
+          <iframe class="wv-frame" data-wv-frame referrerpolicy="no-referrer"></iframe>
+          <div class="wv-note">
+            Some sites block embedding in iframes. If you see a blank/error page, use “Open ↗”.
+          </div>
+        </div>
       </div>
     </section>
   `;
@@ -477,86 +491,30 @@
   const $langButtons = shadow.querySelectorAll(".lang-btn");
   const $dragHandle = shadow.querySelector("[data-drag-handle]");
 
+  // Webview elements
+  const $webview = shadow.querySelector("[data-webview]");
+  const $wvFrame = shadow.querySelector("[data-wv-frame]");
+  const $wvUrl = shadow.querySelector("[data-wv-url]");
+  const $wvBack = shadow.querySelector("[data-wv-back]");
+  const $wvNewTab = shadow.querySelector("[data-wv-newtab]");
+  const $wvClose = shadow.querySelector("[data-wv-close]");
+
+  // ---- language UI ----
   function updateLanguageButtons() {
     $langButtons.forEach((btn) => {
       const lang = btn.getAttribute("data-lang");
       btn.classList.toggle("active", lang === currentLang);
     });
   }
-
   $langButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       const lang = btn.getAttribute("data-lang");
       setLanguage(lang);
     });
   });
-
   updateLanguageButtons();
 
-  // ---- positioning helpers (default + restore) ----
-  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-
-  function getPanelRect() {
-    return $panel.getBoundingClientRect();
-  }
-
-  function defaultPosition() {
-    // Default: anchored above bubble (like your original)
-    const gap = 20;
-    const bubbleGap = 70;
-
-    // ensure we use left/top positioning (not right/bottom), so dragging is consistent
-    const w = $panel.offsetWidth || 360;
-    const h = $panel.offsetHeight || 520;
-
-    let left, top;
-
-    if (CFG.position === "bottom-left") {
-      left = gap;
-      top = window.innerHeight - bubbleGap - h;
-    } else {
-      left = window.innerWidth - gap - w;
-      top = window.innerHeight - bubbleGap - h;
-    }
-
-    // clamp
-    left = clamp(left, 8, window.innerWidth - w - 8);
-    top  = clamp(top,  8, window.innerHeight - h - 8);
-
-    $panel.style.left = left + "px";
-    $panel.style.top = top + "px";
-  }
-
-  function savePosition() {
-    if (CFG.popup) return; // popup uses inset layout
-    const r = getPanelRect();
-    try {
-      localStorage.setItem(POS_KEY, JSON.stringify({ left: r.left, top: r.top }));
-    } catch {}
-  }
-
-  function restorePosition() {
-    if (CFG.popup) return;
-    try {
-      const raw = localStorage.getItem(POS_KEY);
-      if (!raw) return defaultPosition();
-      const pos = JSON.parse(raw);
-      if (!pos || !Number.isFinite(pos.left) || !Number.isFinite(pos.top)) return defaultPosition();
-
-      const w = $panel.offsetWidth || 360;
-      const h = $panel.offsetHeight || 520;
-
-      const left = clamp(pos.left, 8, window.innerWidth - w - 8);
-      const top  = clamp(pos.top,  8, window.innerHeight - h - 8);
-
-      $panel.style.left = left + "px";
-      $panel.style.top = top + "px";
-    } catch {
-      defaultPosition();
-    }
-  }
-
-  // ---- transcript + buttons helpers ----
+  // ---- transcript + buttons ----
   function currentTranscriptArray() {
     const arr = [];
     $messages.querySelectorAll(".msg").forEach((el) => {
@@ -568,21 +526,8 @@
     return arr;
   }
 
-  function persistTranscript() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentTranscriptArray()));
-    } catch {}
-  }
-
-  function renderTranscript(arr) {
-    $messages.innerHTML = "";
-    for (const m of arr) addMessage(m.text, m.role === "user" ? "user" : "bot");
-  }
-
   function persistButtons(btns) {
-    try {
-      localStorage.setItem(BUTTONS_KEY, JSON.stringify(btns || []));
-    } catch {}
+    try { localStorage.setItem(BUTTONS_KEY, JSON.stringify(btns || [])); } catch {}
   }
 
   function getStoredButtons() {
@@ -590,9 +535,11 @@
       const raw = localStorage.getItem(BUTTONS_KEY);
       const arr = raw ? JSON.parse(raw) : null;
       return Array.isArray(arr) ? arr : [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
+  }
+
+  function persistTranscript() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(currentTranscriptArray())); } catch {}
   }
 
   function hydrateButtonsFromStorage() {
@@ -605,8 +552,6 @@
       if (!CFG.popup) {
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(BUTTONS_KEY);
-        localStorage.removeItem(HANDOFF_KEY);
-        comparesHistory = [];
       }
     } catch {}
 
@@ -614,36 +559,96 @@
     hydrateButtonsFromStorage();
   }
 
-  // Cross-window hydrate for popup: includes buttons
-  window.addEventListener("message", (e) => {
-    const d = e?.data;
-    if (!d || d.type !== "chatWidget:hydrate" || d.chatId !== CFG.chatId) return;
-
-    if (Array.isArray(d.messages) && d.messages.length) {
-      renderTranscript(d.messages);
-    }
-    if (Array.isArray(d.buttons)) {
-      addLinks(d.buttons);
-    }
-    if (Array.isArray(d.compares) && d.compares.length) {
-      d.compares.forEach((c) => addComparison(c));
-      comparesHistory = d.compares.slice();
-    }
-    persistTranscript();
-    persistButtons(d.buttons || []);
-  });
-
-  if (CFG.popup && window.opener && !window.opener.closed) {
-    try {
-      window.opener.postMessage({ type: "chatWidget:ready", chatId: CFG.chatId }, "*");
-    } catch {}
-  }
-
   hydrate();
 
-  // ---- drag-resize (existing) ----
-  let rs = null;
+  // ---- open / close + positioning ----
+  function getPanelRect() { return $panel.getBoundingClientRect(); }
 
+  function defaultPosition() {
+    const gap = 20;
+    const bubbleGap = 70;
+    const w = $panel.offsetWidth || 360;
+    const h = $panel.offsetHeight || 520;
+
+    let left, top;
+    if (CFG.position === "bottom-left") {
+      left = gap;
+      top = window.innerHeight - bubbleGap - h;
+    } else {
+      left = window.innerWidth - gap - w;
+      top = window.innerHeight - bubbleGap - h;
+    }
+
+    left = clamp(left, 8, window.innerWidth - w - 8);
+    top = clamp(top, 8, window.innerHeight - h - 8);
+
+    $panel.style.left = left + "px";
+    $panel.style.top = top + "px";
+  }
+
+  function savePosition() {
+    if (CFG.popup) return;
+    const r = getPanelRect();
+    try { localStorage.setItem(POS_KEY, JSON.stringify({ left: r.left, top: r.top })); } catch {}
+  }
+
+  function restorePosition() {
+    if (CFG.popup) return defaultPosition();
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      if (!raw) return defaultPosition();
+      const pos = JSON.parse(raw);
+      if (!pos || !Number.isFinite(pos.left) || !Number.isFinite(pos.top)) return defaultPosition();
+
+      const w = $panel.offsetWidth || 360;
+      const h = $panel.offsetHeight || 520;
+
+      const left = clamp(pos.left, 8, window.innerWidth - w - 8);
+      const top = clamp(pos.top, 8, window.innerHeight - h - 8);
+
+      $panel.style.left = left + "px";
+      $panel.style.top = top + "px";
+    } catch {
+      defaultPosition();
+    }
+  }
+
+  let open = false;
+  function openPanel() {
+    if (open) return;
+    open = true;
+    $panel.classList.add("open");
+    try { localStorage.setItem(OPEN_KEY, "1"); } catch {}
+    restorePosition();
+    setTimeout(() => $input?.focus(), 0);
+    scrollToBottom();
+  }
+  function closePanel() {
+    open = false;
+    $panel.classList.remove("open");
+    try { localStorage.setItem(OPEN_KEY, "0"); } catch {}
+    hideWebView();
+  }
+
+  $bubble.addEventListener("click", openPanel);
+  $close.addEventListener("click", closePanel);
+
+  // Restore open state
+  try {
+    const wasOpen = localStorage.getItem(OPEN_KEY) === "1";
+    if (!CFG.popup && (CFG.startOpen || wasOpen)) openPanel();
+  } catch {
+    if (!CFG.popup && CFG.startOpen) openPanel();
+  }
+
+  window.addEventListener("resize", () => {
+    if (!open || CFG.popup) return;
+    restorePosition();
+    savePosition();
+  });
+
+  // ---- resize handles ----
+  let rs = null;
   function startResize(e, mode) {
     rs = {
       mode,
@@ -674,12 +679,11 @@
       $panel.style.width = clamp(rs.sw - dx, rs.minW, rs.maxW) + "px";
     }
 
-    // Keep panel clamped after resize
     if (!CFG.popup) {
       const r = getPanelRect();
       const w = r.width, h = r.height;
       const newLeft = clamp(r.left, 8, window.innerWidth - w - 8);
-      const newTop  = clamp(r.top,  8, window.innerHeight - h - 8);
+      const newTop = clamp(r.top, 8, window.innerHeight - h - 8);
       $panel.style.left = newLeft + "px";
       $panel.style.top = newTop + "px";
       savePosition();
@@ -704,7 +708,7 @@
     }),
   );
 
-  // ---- NEW: Drag panel by header (Rufus-style) ----
+  // ---- draggable header ----
   let dragging = false;
   let dragStartX = 0, dragStartY = 0;
   let dragStartLeft = 0, dragStartTop = 0;
@@ -713,9 +717,7 @@
     return !!target.closest("button, textarea, input, a, [role='button']");
   }
 
-  function enableDragging() {
-    if (!CFG.draggable || CFG.popup || !$dragHandle) return;
-
+  if (CFG.draggable && !CFG.popup && $dragHandle) {
     $dragHandle.addEventListener("pointerdown", (e) => {
       if (!open) return;
       if (isInteractiveInHeader(e.target)) return;
@@ -744,10 +746,10 @@
       const h = r.height;
 
       const maxLeft = window.innerWidth - w - 8;
-      const maxTop  = window.innerHeight - h - 8;
+      const maxTop = window.innerHeight - h - 8;
 
       const left = clamp(dragStartLeft + dx, 8, maxLeft);
-      const top  = clamp(dragStartTop + dy, 8, maxTop);
+      const top = clamp(dragStartTop + dy, 8, maxTop);
 
       $panel.style.left = left + "px";
       $panel.style.top = top + "px";
@@ -763,150 +765,6 @@
 
     $dragHandle.addEventListener("pointerup", endDrag);
     $dragHandle.addEventListener("pointercancel", endDrag);
-  }
-
-  enableDragging();
-
-  // ---- open / close ----
-  let open = false;
-
-  function openPanel() {
-    if (open) return;
-    open = true;
-    $panel.classList.add("open");
-    try { localStorage.setItem(OPEN_KEY, "1"); } catch {}
-
-    // restore saved panel position (or default anchored)
-    restorePosition();
-
-    setTimeout(() => $input?.focus(), 0);
-    scrollToBottom();
-  }
-
-  function closePanel() {
-    open = false;
-    $panel.classList.remove("open");
-    try { localStorage.setItem(OPEN_KEY, "0"); } catch {}
-  }
-
-  if (CFG.popup) openPanel();
-
-  $bubble.addEventListener("click", openPanel);
-  $close.addEventListener("click", closePanel);
-
-  // Restore open state
-  try {
-    const wasOpen = localStorage.getItem(OPEN_KEY) === "1";
-    if (!CFG.popup && (CFG.startOpen || wasOpen)) openPanel();
-  } catch {
-    if (!CFG.popup && CFG.startOpen) openPanel();
-  }
-
-  // Clamp panel when viewport changes
-  window.addEventListener("resize", () => {
-    if (!open || CFG.popup) return;
-    restorePosition();
-    savePosition();
-  });
-
-  // ---- popup plumbing (kept for backwards compatibility) ----
-  function writePopupContent(w) {
-    const srcAbs = new URL(currentScript?.src || "", location.href).href;
-    const parentPageUrl = window.location.href;
-
-    const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${escapeHtml(CFG.title)}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>html,body{height:100%;margin:0;background:#f5f7fb;}</style>
-</head>
-<body>
-  <script
-    src="${srcAbs}"
-    data-endpoint="${escapeHtml(CFG.endpoint)}"
-    data-title="${escapeHtml(CFG.title)}"
-    data-primary="${escapeHtml(CFG.primary)}"
-    data-accent="${escapeHtml(CFG.accent)}"
-    data-position="bottom-right"
-    data-start-open="true"
-    data-chat-id="${escapeHtml(CFG.chatId)}"
-    data-popup="true"
-    data-page-url="${escapeHtml(parentPageUrl)}"
-    data-link-behavior="popup"
-    defer
-  ></script>
-</body>
-</html>`;
-    try {
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-    } catch {}
-  }
-
-  function openPopupWindow() {
-    const WIDTH = 520, HEIGHT = 760;
-    const left = Math.max(
-      0,
-      (window.screenX || window.screenLeft) + window.innerWidth - WIDTH - 20,
-    );
-    const top = Math.max(
-      0,
-      (window.screenY || window.screenTop) + window.innerHeight - HEIGHT - 60,
-    );
-    const features = [
-      "popup=yes",
-      "resizable=yes",
-      "scrollbars=yes",
-      "toolbar=0",
-      "menubar=0",
-      "location=0",
-      "status=0",
-      `width=${WIDTH}`,
-      `height=${HEIGHT}`,
-      `left=${left}`,
-      `top=${top}`,
-    ].join(",");
-    const w = window.open("about:blank", "ChatWidgetPopup", features);
-    if (!w) return null;
-
-    persistTranscript();
-    writePopupContent(w);
-
-    try {
-      w.resizeTo(WIDTH, HEIGHT);
-      w.moveTo(left, top);
-      w.focus();
-    } catch {}
-
-    const sendHydrate = () => {
-      try {
-        w.postMessage(
-          {
-            type: "chatWidget:hydrate",
-            chatId: CFG.chatId,
-            messages: currentTranscriptArray(),
-            buttons: getStoredButtons(),
-            compares: comparesHistory,
-          },
-          "*",
-        );
-      } catch {}
-    };
-
-    const readyHandler = (e) => {
-      const d = e?.data;
-      if (!d || d.type !== "chatWidget:ready" || d.chatId !== CFG.chatId) return;
-      sendHydrate();
-      window.removeEventListener("message", readyHandler);
-    };
-    window.addEventListener("message", readyHandler);
-
-    setTimeout(sendHydrate, 300);
-
-    return w;
   }
 
   // ---- input / send ----
@@ -931,7 +789,17 @@
     sendMessage(text);
   }
 
-  // --- STREAMING SUPPORT ---
+  function setThinking(on) {
+    $thinking.classList.toggle("show", !!on);
+    scrollToBottom();
+  }
+
+  function disableInput(on) {
+    $input.disabled = !!on;
+    $send.disabled = !!on;
+  }
+
+  // ---- messages ----
   function addMessage(text, role = "bot", opts = {}) {
     const div = document.createElement("div");
     div.className = `msg ${role}`;
@@ -965,96 +833,89 @@
     step();
   }
 
-  // --- comparison renderer ---
-  function addComparison(compare) {
-    if (!compare || !Array.isArray(compare.products) || compare.products.length !== 2) {
-      return;
+  // ---- extract links from raw text ----
+  function extractLinksFromText(text) {
+    const out = [];
+    if (!text) return out;
+    const re = /\bhttps?:\/\/[^\s<>"')]+/gi;
+    const seen = new Set();
+    let m;
+    while ((m = re.exec(text))) {
+      const url = m[0];
+      if (seen.has(url)) continue;
+      seen.add(url);
+      let label = url.replace(/^https?:\/\//, "");
+      try { label = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+      out.push({ label, url });
     }
-
-    const [p1, p2] = compare.products;
-    if (p1.family && p2.family && p1.family !== p2.family) return;
-
-    const rowsRaw = Array.isArray(compare.rows) ? compare.rows.slice() : [];
-    rowsRaw.sort((a, b) => (a.importance ?? 999) - (b.importance ?? 999));
-
-    const container = document.createElement("div");
-    container.className = "compare-block";
-
-    const title = compare.title || `${p1.name || "Product 1"} vs ${p2.name || "Product 2"}`;
-    const safe = (v) => escapeHtml(v ?? "");
-
-    const rowsHTML = rowsRaw.map(row => {
-      const label = safe(row.label || row.key || "");
-      const v1 = safe((row.values && row.values[0]) || "");
-      const v2 = safe((row.values && row.values[1]) || "");
-      if (!label && !v1 && !v2) return "";
-      return `
-        <div class="compare-row">
-          <div class="compare-label"><strong>${label}</strong></div>
-          <div class="compare-values">
-            <div class="compare-value">${v1}</div>
-            <div class="compare-value">${v2}</div>
-          </div>
-        </div>`;
-    }).join("");
-
-    container.innerHTML = `
-      <div class="compare-header">
-        <div class="compare-title">${safe(title)}</div>
-        <div class="compare-products">
-          <div class="compare-prod">
-            <div class="compare-prod-name">${safe(p1.name || "Product 1")}</div>
-            ${p1.tagline ? `<div class="compare-prod-tagline">${safe(p1.tagline)}</div>` : ""}
-            ${p1.family ? `<div class="compare-prod-pill">${safe(p1.family)}</div>` : ""}
-          </div>
-          <div class="compare-prod">
-            <div class="compare-prod-name">${safe(p2.name || "Product 2")}</div>
-            ${p2.tagline ? `<div class="compare-prod-tagline">${safe(p2.tagline)}</div>` : ""}
-            ${p2.family ? `<div class="compare-prod-pill">${safe(p2.family)}</div>` : ""}
-          </div>
-        </div>
-      </div>
-      <div class="compare-rows">
-        ${rowsHTML}
-      </div>
-    `;
-
-    $messages.appendChild(container);
-    scrollToBottom();
+    return out;
   }
 
-  // ---- NEW link behavior (no popup by default) ----
+  // ---- Webview overlay (Option 3) ----
+  let webviewCurrentUrl = null;
+
+  function showWebView(url) {
+    const u = safeUrl(url);
+    if (!u) return;
+
+    webviewCurrentUrl = u;
+    try { localStorage.setItem(WEBVIEW_KEY, u); } catch {}
+
+    $wvUrl.textContent = u;
+    $wvUrl.title = u;
+
+    // Setting src last reduces flicker in some browsers
+    $wvFrame.src = "about:blank";
+    setTimeout(() => { $wvFrame.src = u; }, 0);
+
+    $webview.classList.add("show");
+  }
+
+  function hideWebView() {
+    webviewCurrentUrl = null;
+    $webview.classList.remove("show");
+    // Optional: stop loading
+    try { $wvFrame.src = "about:blank"; } catch {}
+  }
+
+  $wvBack.addEventListener("click", hideWebView);
+  $wvClose.addEventListener("click", hideWebView);
+  $wvNewTab.addEventListener("click", () => {
+    if (!webviewCurrentUrl) return;
+    try { window.open(webviewCurrentUrl, "_blank", "noopener,noreferrer"); } catch {
+      window.location.href = webviewCurrentUrl;
+    }
+  });
+
+  // ---- navigation behavior ----
   function navigateUrl(url) {
-    if (!url || url === "#") return;
+    const u = safeUrl(url);
+    if (!u) return;
 
     const mode = CFG.linkBehavior;
 
     if (mode === "same-tab") {
-      window.location.href = url;
+      window.location.href = u;
+      return;
+    }
+
+    if (mode === "new-tab") {
+      try { window.open(u, "_blank", "noopener,noreferrer"); } catch { window.location.href = u; }
       return;
     }
 
     if (mode === "popup") {
-      // old behavior: open popup and navigate current page
-      const w = openPopupWindow();
-      if (!w) {
-        window.location.href = url;
-        return;
-      }
-      try { localStorage.setItem(HANDOFF_KEY, "1"); } catch {}
-      window.location.href = url;
+      // If you ever want to restore the old behavior, you can add your old popup plumbing here.
+      // For now, keep it simple:
+      try { window.open(u, "_blank", "noopener,noreferrer"); } catch { window.location.href = u; }
       return;
     }
 
-    // default: "new-tab"
-    try {
-      window.open(url, "_blank", "noopener,noreferrer");
-    } catch {
-      // fallback
-      window.location.href = url;
-    }
+    // Default: in-widget overlay
+    showWebView(u);
   }
 
+  // ---- link buttons ----
   function addLinks(links = []) {
     $buttons.innerHTML = "";
 
@@ -1065,27 +926,19 @@
 
     links.forEach((l) => {
       const url = l?.url || "#";
+      const u = safeUrl(url) || url;
+
       const a = document.createElement("a");
       a.className = "link-btn";
-      a.href = url;
-      a.title = url;
-      a.textContent = (l?.label || url).replace(/^https?:\/\//, "");
+      a.href = u;
+      a.title = u;
+      a.textContent = (l?.label || u).replace(/^https?:\/\//, "");
 
-      // In popup window: prefer opening in opener (same-tab there)
-      if (CFG.popup && window.opener && !window.opener.closed) {
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          try { window.opener.location.href = url; } catch {}
-          if (CFG.closeOnNavigate) {
-            try { window.close(); } catch {}
-          }
-        });
-      } else {
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          navigateUrl(url);
-        });
-      }
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        openPanel(); // ensure panel is open
+        navigateUrl(u);
+      });
 
       $buttons.appendChild(a);
       scrollToBottom();
@@ -1094,6 +947,7 @@
     persistButtons(links);
   }
 
+  // ---- server call ----
   async function sendMessage(text) {
     if (!CFG.endpoint) {
       addMessage("Configuration error: missing endpoint.", "bot");
@@ -1101,6 +955,7 @@
     }
     setThinking(true);
     disableInput(true);
+
     try {
       const res = await fetch(CFG.endpoint, {
         method: "POST",
@@ -1116,6 +971,7 @@
         }),
         credentials: "omit",
       });
+
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       const raw = ct.includes("application/json") ? await res.json() : await res.text();
       const payload = typeof raw === "string" ? tryParseJSON(raw) ?? raw : raw;
@@ -1172,14 +1028,10 @@
         extractLinksFromText(text);
       addLinks(Array.isArray(links) ? links : []);
 
-      if (payload.rich && payload.rich.compare) {
-        comparesHistory.push(payload.rich.compare);
-        addComparison(payload.rich.compare);
-      }
-
+      // Redirects: in-widget by default (Option 3)
       const url = payload.redirect || (payload.rich && payload.rich.redirect);
       if (url && typeof url === "string") {
-        // Use same navigation behavior for redirects too:
+        openPanel();
         navigateUrl(url);
       }
     } catch (e) {
@@ -1189,67 +1041,20 @@
     }
   }
 
-  function setThinking(on) {
-    $thinking.classList.toggle("show", !!on);
-    scrollToBottom();
-  }
-  function disableInput(on) {
-    $input.disabled = !!on;
-    $send.disabled = !!on;
-  }
-
-  function extractLinksFromText(text) {
-    const out = [];
-    if (!text) return out;
-    const re = /\bhttps?:\/\/[^\s<>"')]+/gi;
-    const seen = new Set();
-    let m;
-    while ((m = re.exec(text))) {
-      const url = m[0];
-      if (seen.has(url)) continue;
-      seen.add(url);
-      let label = url.replace(/^https?:\/\//, "");
-      try {
-        label = new URL(url).hostname.replace(/^www\./, "");
-      } catch {}
-      out.push({ label, url });
+  // ---- ESC behavior ----
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if ($webview.classList.contains("show")) {
+      hideWebView();
+      return;
     }
-    return out;
-  }
+    if (open) closePanel();
+  });
 
-  // ---- utils ----
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (m) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      }[m]),
-    );
-  }
-
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
-      $messages.scrollTop = $messages.scrollHeight;
-    });
-  }
-
-  function normalizeText(s) {
-    return String(s)
-      .replace(/\*\*(.*?)\*\*/g, "$1")
-      .replace(/__(.*?)__/g, "$1")
-      .replace(/<\/?[^>]+>/g, "");
-  }
-
-  function tryParseJSON(s) {
-    const t = String(s).trim();
-    if (!t || (t[0] !== "{" && t[0] !== "[")) return null;
-    try {
-      return JSON.parse(t);
-    } catch {
-      return null;
-    }
-  }
+  // Optional: restore last in-widget URL when reopening (commented by default)
+  // You can enable this if you want a "continue browsing" feel.
+  // try {
+  //   const last = localStorage.getItem(WEBVIEW_KEY);
+  //   if (last) showWebView(last);
+  // } catch {}
 })();
