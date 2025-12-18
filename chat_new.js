@@ -1,1060 +1,220 @@
-(() => {
-  const currentScript = document.currentScript;
+/* 
+  Rufus-style floating chat widget
+  - Draggable + resizable
+  - In-widget webview preview
+  - Intent-first suggestions
+  - Preview confirmation messages
+  - Snap-to-edge positioning
+*/
 
+(() => {
+  const SNAP_PX = 24;
+
+  /* ---------------- CONFIG ---------------- */
+  const currentScript = document.currentScript;
   const CFG = {
     endpoint: currentScript?.dataset.endpoint || "",
     title: currentScript?.dataset.title || "Support Assistant",
-    primary: currentScript?.dataset.primary || "#CC0000",
-    accent: currentScript?.dataset.accent || "#ffffff",
-    position: (currentScript?.dataset.position || "bottom-right").toLowerCase(),
-    startOpen: (currentScript?.dataset.startOpen || "false").toLowerCase() === "true",
+    primary: currentScript?.dataset.primary || "#0b5fff",
+    accent: currentScript?.dataset.accent || "#e8f0ff",
     placeholder: currentScript?.dataset.placeholder || "Ask me anything…",
-    chatId: currentScript?.dataset.chatId || null,
-
-    // legacy popup mode (still supported if you set linkBehavior="popup")
-    popup: (currentScript?.dataset.popup || "false").toLowerCase() === "true",
-    closeOnNavigate: (currentScript?.dataset.closeOnNavigate || "false").toLowerCase() === "true",
-    pageUrl: currentScript?.dataset.pageUrl || window.location.href,
-
-    draggable: (currentScript?.dataset.draggable || "true").toLowerCase() !== "false",
-
-    // NEW behaviors:
-    // "in-widget" (Option 3) - open links inside widget iframe overlay
-    // "new-tab" - open in a new tab
-    // "same-tab" - navigate current tab
-    // "popup" - old popup handoff
-    linkBehavior: (currentScript?.dataset.linkBehavior || "in-widget").toLowerCase(),
+    position: (currentScript?.dataset.position || "bottom-right").toLowerCase(),
+    draggable: (currentScript?.dataset.draggable || "true") !== "false",
+    linkBehavior: "in-widget",
   };
 
-  // ---- IDs & keys ----
-  if (!CFG.chatId) {
-    const fromUrl = new URLSearchParams(location.search).get("chatId");
-    const makeId = () =>
-      crypto.randomUUID?.() ||
-      (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
-    CFG.chatId = fromUrl || localStorage.getItem("chatWidgetChatId") || makeId();
-    localStorage.setItem("chatWidgetChatId", CFG.chatId);
-  }
-
-  const STORAGE_KEY = `chatWidget:transcript:${CFG.chatId}`;
-  const BUTTONS_KEY = `chatWidget:buttons:${CFG.chatId}`;
-  const OPEN_KEY = `chatWidget:open:${CFG.chatId}`;
-  const POS_KEY = `chatWidget:pos:${CFG.chatId}:v1`;
-  const LANG_KEY = `chatWidget:lang:${CFG.chatId}`;
-  const WEBVIEW_KEY = `chatWidget:webview:lastUrl:${CFG.chatId}`;
-
-  // ---- language state ----
-  const SUPPORTED_LANGS = ["en", "de", "fr"];
-  let currentLang = (() => {
+  /* ---------------- UTIL ---------------- */
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const safeUrl = (u) => {
     try {
-      const saved = localStorage.getItem(LANG_KEY);
-      if (SUPPORTED_LANGS.includes(saved)) return saved;
-    } catch {}
-    return "en";
-  })();
+      const url = new URL(u, location.href);
+      return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+    } catch { return null; }
+  };
 
-  function setLanguage(lang) {
-    if (!SUPPORTED_LANGS.includes(lang)) return;
-    currentLang = lang;
-    try { localStorage.setItem(LANG_KEY, lang); } catch {}
-    updateLanguageButtons();
-  }
-
-  // ---- host container (full viewport overlay, pointerEvents none) ----
+  /* ---------------- HOST ---------------- */
   const host = document.createElement("div");
   host.style.position = "fixed";
   host.style.inset = "0";
-  host.style.zIndex = "2147483646";
   host.style.pointerEvents = "none";
+  host.style.zIndex = "2147483646";
   document.body.appendChild(host);
 
   const shadow = host.attachShadow({ mode: "open" });
 
-  // ---- utilities ----
-  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  /* ---------------- TEMPLATE ---------------- */
+  shadow.innerHTML = `
+<style>
+  *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto}
+  .bubble{pointer-events:auto;position:fixed;width:56px;height:56px;border-radius:50%;
+    background:${CFG.primary};color:#fff;display:grid;place-items:center;cursor:pointer;
+    box-shadow:0 10px 28px rgba(0,0,0,.25)}
+  .bubble.br{right:20px;bottom:20px}
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (m) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      }[m]),
-    );
-  }
+  .panel{pointer-events:auto;position:fixed;width:360px;height:520px;
+    background:#fff;border-radius:16px;display:none;flex-direction:column;
+    box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
+  .panel.open{display:flex}
 
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
-      $messages.scrollTop = $messages.scrollHeight;
-    });
-  }
+  .header{background:#041E42;color:#fff;padding:10px 14px;
+    display:flex;align-items:center;cursor:grab}
+  .header.dragging{cursor:grabbing}
+  .title{flex:1;font-weight:700}
+  .close{background:none;border:0;color:#fff;font-size:18px;cursor:pointer}
 
-  function normalizeText(s) {
-    return String(s)
-      .replace(/\*\*(.*?)\*\*/g, "$1")
-      .replace(/__(.*?)__/g, "$1")
-      .replace(/<\/?[^>]+>/g, "");
-  }
+  .body{flex:1;position:relative;background:#f5f6f8;display:flex;flex-direction:column}
+  .messages{flex:1;overflow:auto;padding:12px}
+  .msg{max-width:85%;padding:10px 12px;border-radius:14px;margin:6px 0;font-size:13px}
+  .msg.bot{background:${CFG.accent};border:1px solid #e5e7eb}
+  .msg.user{background:${CFG.primary};color:#fff;margin-left:auto}
 
-  function tryParseJSON(s) {
-    const t = String(s).trim();
-    if (!t || (t[0] !== "{" && t[0] !== "[")) return null;
-    try { return JSON.parse(t); } catch { return null; }
-  }
+  .buttons{display:flex;flex-wrap:wrap;gap:6px;padding:6px 12px}
+  .btn{border-radius:999px;padding:6px 12px;border:1px solid #c7d2fe;
+    background:#eef2ff;cursor:pointer;font-size:12px}
 
-  function safeUrl(u) {
-    // Allow only http/https (avoid javascript:, data:, etc.)
-    try {
-      const url = new URL(u, window.location.href);
-      if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
-      return null;
-    } catch {
-      return null;
-    }
-  }
+  .footer{padding:10px;background:#fff;border-top:1px solid #eee;display:flex;gap:8px}
+  textarea{flex:1;border-radius:999px;padding:10px;border:1px solid #ccc;resize:none}
+  button.send{border-radius:999px;background:${CFG.primary};color:#fff;border:0;padding:0 14px}
 
-  // ---- template ----
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = `
-    <style>
-      :host { all: initial; }
-      * {
-        box-sizing: border-box;
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-      }
+  /* Webview */
+  .webview{position:absolute;inset:0;background:#fff;display:none;flex-direction:column}
+  .webview.show{display:flex}
+  .wv-top{display:flex;align-items:center;gap:6px;padding:6px;border-bottom:1px solid #eee}
+  .wv-btn{padding:4px 8px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
+  .wv-url{flex:1;font-size:11px;opacity:.7;overflow:hidden;text-overflow:ellipsis}
+  iframe{flex:1;border:0}
+</style>
 
-      ${CFG.popup ? `.bubble{ display:none !important; }` : ``}
+<button class="bubble br">💬</button>
 
-      .bubble{
-        pointer-events:auto;
-        position: fixed;
-        width:56px;height:56px;
-        border-radius:50%;
-        background:${CFG.primary};
-        display:grid;place-items:center;
-        color:#fff;font-weight:700;
-        cursor:pointer;
-        box-shadow:0 8px 28px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.12);
-        border:2px solid #ffffff;
-        z-index: 2147483646;
-      }
-      .bubble.br { right:20px; bottom:20px; }
-      .bubble.bl { left:20px; bottom:20px; }
+<section class="panel">
+  <div class="header">
+    <div class="title">${CFG.title}</div>
+    <button class="close">✕</button>
+  </div>
 
-      .panel{
-        pointer-events:auto;
-        position: fixed;
-        width:360px; height:520px;
-        max-width:calc(100vw - 40px);
-        max-height:calc(100vh - 120px);
-        background:#ffffff;
-        border-radius:16px;
-        overflow:hidden;
-        display:none;
-        box-shadow:0 14px 45px rgba(0,0,0,.18),0 10px 18px rgba(0,0,0,.12);
-        will-change: left, top, width, height;
-        min-width:320px; min-height:360px;
-        z-index: 2147483646;
-      }
-      .panel.open{
-        display:flex;
-        flex-direction:column;
-      }
+  <div class="body">
+    <div class="messages"></div>
+    <div class="buttons"></div>
 
-      ${CFG.popup ? `
-      .panel{
-        position: fixed; inset: 8px;
-        width: auto; height: auto;
-        max-width: none; max-height: none;
-      }` : ``}
+    <div class="footer">
+      <textarea rows="1" placeholder="${CFG.placeholder}"></textarea>
+      <button class="send">▶</button>
+    </div>
 
-      .panel.resizable{ resize:both; }
-
-      .header{
-        background:#041E42;
-        color:#fff;
-        padding:10px 14px;
-        display:flex;
-        align-items:center;
-        gap:8px;
-        ${CFG.draggable ? `cursor: grab; user-select:none; touch-action:none;` : ``}
-      }
-      .header.dragging{ cursor: grabbing; }
-
-      .title{
-        font-weight:700;
-        font-size:14px;
-        letter-spacing:0.02em;
-        flex:1;
-      }
-      .controls{ display:flex; gap:6px; }
-      .hbtn{
-        background:rgba(255,255,255,.12);
-        color:#fff;
-        border:0;
-        border-radius:999px;
-        padding:4px 8px;
-        cursor:pointer;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-      }
-
-      .lang-switch{ display:flex; align-items:center; gap:4px; margin-right:4px; }
-      .lang-btn{
-        border:none;
-        background:transparent;
-        cursor:pointer;
-        font-size:14px;
-        line-height:1;
-        opacity:0.6;
-        padding:4px;
-        border-radius:6px;
-      }
-      .lang-btn.active{
-        opacity:1;
-        background:rgba(255,255,255,0.18);
-      }
-
-      .body{
-        background:#f5f5f7;
-        display:flex;
-        flex-direction:column;
-        min-height:0;
-        height:100%;
-        position: relative; /* needed for webview overlay */
-      }
-
-      .messages{
-        padding:12px 12px 76px;
-        overflow:auto;
-        flex:1;
-      }
-
-      .msg{
-        max-width:85%;
-        padding:10px 12px;
-        border-radius:14px;
-        margin:6px 0;
-        white-space:pre-wrap;
-        word-break:break-word;
-        line-height:1.4;
-        font-size:13px;
-      }
-      .msg.user{
-        margin-left:auto;
-        background:${CFG.primary};
-        color:#ffffff;
-      }
-      .msg.bot{
-        background:${CFG.accent};
-        color:#111827;
-        border:1px solid #e2e4ea;
-      }
-
-      .buttons{
-        margin:2px 0 6px 0;
-        display:flex;
-        flex-wrap:wrap;
-        gap:6px;
-        padding-left:12px;
-      }
-      .link-btn{
-        display:inline-flex;
-        align-items:center;
-        gap:8px;
-        border:1px solid #f5bcbc;
-        background:#fff5f5;
-        color:#7b1b1b;
-        border-radius:999px;
-        padding:6px 12px;
-        text-decoration:none;
-        max-width:100%;
-        overflow:hidden;
-        text-overflow:ellipsis;
-        white-space:nowrap;
-        font-size:12px;
-        transition: background .15s ease, border-color .15s ease, transform .1s ease;
-      }
-      .link-btn:hover{
-        background:#ffe1e1;
-        border-color:#f2a9a9;
-        transform:translateY(-1px);
-      }
-
-      .typing-indicator{
-        display:none;
-        margin:4px 0 6px 16px;
-        padding:0;
-        border:none;
-        background:transparent;
-        width:auto;
-        align-items:center;
-        gap:4px;
-      }
-      .typing-indicator.show{ display:inline-flex; }
-      .typing-indicator span{
-        width:8px;
-        height:8px;
-        border-radius:50%;
-        background:${CFG.primary};
-        opacity:0.3;
-        display:inline-block;
-        animation: typing-bounce 1.1s infinite ease-in-out;
-      }
-      .typing-indicator span:nth-child(2){ animation-delay:0.15s; }
-      .typing-indicator span:nth-child(3){ animation-delay:0.3s; }
-      @keyframes typing-bounce{
-        0%,80%,100%{ transform:translateY(0); opacity:.4; }
-        40%{ transform:translateY(-3px); opacity:1; }
-      }
-
-      .footer{
-        border-top:1px solid rgba(0,0,0,.06);
-        background:#ffffff;
-        display:flex;
-        align-items:flex-end;
-        gap:8px;
-        padding:10px;
-      }
-      .textarea{
-        flex:1;
-        min-height:40px;
-        max-height:160px;
-        overflow:auto;
-        border:1px solid #d2d7e0;
-        border-radius:999px;
-        padding:10px 14px;
-        outline:none;
-        resize:none;
-        font-size:13px;
-        background:#f9fafb;
-      }
-      .textarea:focus{
-        border-color:${CFG.primary};
-        background:#ffffff;
-        box-shadow:0 0 0 1px ${CFG.primary}1a;
-      }
-      .send{
-        background:${CFG.primary};
-        color:#fff;
-        border:none;
-        border-radius:999px;
-        padding:9px 13px;
-        cursor:pointer;
-        font-weight:600;
-        font-size:13px;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-      }
-      .send:disabled{ opacity:.6; cursor:not-allowed; }
-
-      .resize-handle{ position:absolute; z-index:5; }
-      .resize-handle.top{
-        top:0; left:10px; right:10px;
-        height:10px; cursor:ns-resize;
-      }
-      .resize-handle.left{
-        left:0; top:10px; bottom:10px;
-        width:10px; cursor:ew-resize;
-      }
-      .resize-handle.corner{
-        top:0; left:0;
-        width:14px;height:14px;
-        cursor:nwse-resize;
-      }
-      .resize-handle:hover{ background:rgba(0,0,0,.03); }
-
-      /* ---------- Webview overlay (Option 3) ---------- */
-      .webview{
-        position:absolute;
-        inset:0;
-        background:#ffffff;
-        display:none;
-        flex-direction:column;
-        z-index: 50;
-        border-radius: 0; /* panel already has radius */
-      }
-      .webview.show{ display:flex; }
-
-      .webview-topbar{
-        height:44px;
-        display:flex;
-        align-items:center;
-        gap:8px;
-        padding: 8px;
-        border-bottom: 1px solid rgba(0,0,0,.08);
-        background:#ffffff;
-      }
-      .wv-btn{
-        border:1px solid rgba(0,0,0,.10);
-        background:#ffffff;
-        border-radius: 10px;
-        padding: 6px 10px;
-        cursor:pointer;
-        font-weight:700;
-        font-size:12px;
-        color:#111827;
-      }
-      .wv-btn:hover{ background: rgba(0,0,0,.03); }
-
-      .wv-url{
-        flex:1;
-        font-size:12px;
-        color: rgba(17,24,39,.60);
-        overflow:hidden;
-        text-overflow:ellipsis;
-        white-space:nowrap;
-        padding: 0 6px;
-      }
-
-      .wv-frame{
-        flex:1;
-        border:0;
-        width:100%;
-        height:100%;
-        background:#fff;
-      }
-
-      .wv-note{
-        padding: 8px 10px;
-        font-size: 11px;
-        color: rgba(17,24,39,.65);
-        border-top: 1px solid rgba(0,0,0,.06);
-        background: #fafafa;
-      }
-    </style>
-
-    <button class="bubble ${CFG.position === "bottom-left" ? "bl" : "br"}" aria-label="Open chat" title="Chat">
-      <span>💬</span>
-    </button>
-
-    <section class="panel resizable" role="dialog" aria-label="Chat" aria-modal="false">
-      <div class="resize-handle top" data-resize="top"></div>
-      <div class="resize-handle left" data-resize="left"></div>
-      <div class="resize-handle corner" data-resize="corner"></div>
-
-      <div class="header" data-drag-handle>
-        <div class="title">${escapeHtml(CFG.title)}</div>
-        <div class="controls">
-          <div class="lang-switch" data-lang-switch>
-            <button class="lang-btn" data-lang="en" title="English">🇬🇧</button>
-            <button class="lang-btn" data-lang="de" title="German">🇩🇪</button>
-            <button class="lang-btn" data-lang="fr" title="French">🇫🇷</button>
-          </div>
-          <button class="hbtn" data-close aria-label="Close chat">✕</button>
-        </div>
+    <div class="webview">
+      <div class="wv-top">
+        <button class="wv-btn back">← Back</button>
+        <div class="wv-url"></div>
+        <button class="wv-btn open">Open ↗</button>
+        <button class="wv-btn close">✕</button>
       </div>
+      <iframe></iframe>
+    </div>
+  </div>
+</section>
+`;
 
-      <div class="body">
-        <div class="messages" data-messages></div>
-        <div class="buttons" data-buttons></div>
-        <div class="typing-indicator" data-thinking>
-          <span></span><span></span><span></span>
-        </div>
-        <div class="footer">
-          <textarea class="textarea" data-input rows="1" placeholder="${escapeHtml(CFG.placeholder)}"></textarea>
-          <button class="send" data-send>▶</button>
-        </div>
-
-        <!-- Webview overlay (Option 3) -->
-        <div class="webview" data-webview>
-          <div class="webview-topbar">
-            <button class="wv-btn" type="button" data-wv-back>← Back</button>
-            <div class="wv-url" data-wv-url title=""></div>
-            <button class="wv-btn" type="button" data-wv-newtab>Open ↗</button>
-            <button class="wv-btn" type="button" data-wv-close>✕</button>
-          </div>
-          <iframe class="wv-frame" data-wv-frame referrerpolicy="no-referrer"></iframe>
-          <div class="wv-note">
-            Some sites block embedding in iframes. If you see a blank/error page, use “Open ↗”.
-          </div>
-        </div>
-      </div>
-    </section>
-  `;
-  shadow.appendChild(wrapper);
-
-  // ---- elements ----
+  /* ---------------- ELEMENTS ---------------- */
   const $bubble = shadow.querySelector(".bubble");
   const $panel = shadow.querySelector(".panel");
-  const $messages = shadow.querySelector("[data-messages]");
-  const $buttons = shadow.querySelector("[data-buttons]");
-  const $input = shadow.querySelector("[data-input]");
-  const $send = shadow.querySelector("[data-send]");
-  const $close = shadow.querySelector("[data-close]");
-  const $thinking = shadow.querySelector("[data-thinking]");
-  const $handles = shadow.querySelectorAll(".resize-handle");
-  const $langButtons = shadow.querySelectorAll(".lang-btn");
-  const $dragHandle = shadow.querySelector("[data-drag-handle]");
+  const $header = shadow.querySelector(".header");
+  const $close = shadow.querySelector(".close");
+  const $messages = shadow.querySelector(".messages");
+  const $buttons = shadow.querySelector(".buttons");
+  const $input = shadow.querySelector("textarea");
+  const $send = shadow.querySelector(".send");
 
-  // Webview elements
-  const $webview = shadow.querySelector("[data-webview]");
-  const $wvFrame = shadow.querySelector("[data-wv-frame]");
-  const $wvUrl = shadow.querySelector("[data-wv-url]");
-  const $wvBack = shadow.querySelector("[data-wv-back]");
-  const $wvNewTab = shadow.querySelector("[data-wv-newtab]");
-  const $wvClose = shadow.querySelector("[data-wv-close]");
+  const $webview = shadow.querySelector(".webview");
+  const $iframe = shadow.querySelector("iframe");
+  const $wvUrl = shadow.querySelector(".wv-url");
 
-  // ---- language UI ----
-  function updateLanguageButtons() {
-    $langButtons.forEach((btn) => {
-      const lang = btn.getAttribute("data-lang");
-      btn.classList.toggle("active", lang === currentLang);
-    });
-  }
-  $langButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const lang = btn.getAttribute("data-lang");
-      setLanguage(lang);
-    });
-  });
-  updateLanguageButtons();
+  /* ---------------- DRAG + SNAP ---------------- */
+  let drag = null;
+  $header.onpointerdown = (e) => {
+    drag = { x: e.clientX, y: e.clientY, r: $panel.getBoundingClientRect() };
+    $header.classList.add("dragging");
+    $header.setPointerCapture(e.pointerId);
+  };
+  $header.onpointermove = (e) => {
+    if (!drag) return;
+    let left = drag.r.left + (e.clientX - drag.x);
+    let top = drag.r.top + (e.clientY - drag.y);
 
-  // ---- transcript + buttons ----
-  function currentTranscriptArray() {
-    const arr = [];
-    $messages.querySelectorAll(".msg").forEach((el) => {
-      arr.push({
-        role: el.classList.contains("user") ? "user" : "bot",
-        text: el.textContent || "",
-      });
-    });
-    return arr;
-  }
-
-  function persistButtons(btns) {
-    try { localStorage.setItem(BUTTONS_KEY, JSON.stringify(btns || [])); } catch {}
-  }
-
-  function getStoredButtons() {
-    try {
-      const raw = localStorage.getItem(BUTTONS_KEY);
-      const arr = raw ? JSON.parse(raw) : null;
-      return Array.isArray(arr) ? arr : [];
-    } catch { return []; }
-  }
-
-  function persistTranscript() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(currentTranscriptArray())); } catch {}
-  }
-
-  function hydrateButtonsFromStorage() {
-    const arr = getStoredButtons();
-    if (arr.length) addLinks(arr);
-  }
-
-  function hydrate() {
-    try {
-      if (!CFG.popup) {
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(BUTTONS_KEY);
-      }
-    } catch {}
-
-    addMessage("Hi! How can I help?", "bot");
-    hydrateButtonsFromStorage();
-  }
-
-  hydrate();
-
-  // ---- open / close + positioning ----
-  function getPanelRect() { return $panel.getBoundingClientRect(); }
-
-  function defaultPosition() {
-    const gap = 20;
-    const bubbleGap = 70;
-    const w = $panel.offsetWidth || 360;
-    const h = $panel.offsetHeight || 520;
-
-    let left, top;
-    if (CFG.position === "bottom-left") {
-      left = gap;
-      top = window.innerHeight - bubbleGap - h;
-    } else {
-      left = window.innerWidth - gap - w;
-      top = window.innerHeight - bubbleGap - h;
-    }
-
-    left = clamp(left, 8, window.innerWidth - w - 8);
-    top = clamp(top, 8, window.innerHeight - h - 8);
+    if (left < SNAP_PX) left = 8;
+    if (top < SNAP_PX) top = 8;
+    if (window.innerWidth - (left + drag.r.width) < SNAP_PX)
+      left = window.innerWidth - drag.r.width - 8;
+    if (window.innerHeight - (top + drag.r.height) < SNAP_PX)
+      top = window.innerHeight - drag.r.height - 8;
 
     $panel.style.left = left + "px";
     $panel.style.top = top + "px";
+  };
+  $header.onpointerup = () => {
+    drag = null;
+    $header.classList.remove("dragging");
+  };
+
+  /* ---------------- CHAT ---------------- */
+  function addMsg(text, role="bot") {
+    const d = document.createElement("div");
+    d.className = "msg " + role;
+    d.textContent = text;
+    $messages.appendChild(d);
+    $messages.scrollTop = $messages.scrollHeight;
   }
 
-  function savePosition() {
-    if (CFG.popup) return;
-    const r = getPanelRect();
-    try { localStorage.setItem(POS_KEY, JSON.stringify({ left: r.left, top: r.top })); } catch {}
-  }
-
-  function restorePosition() {
-    if (CFG.popup) return defaultPosition();
-    try {
-      const raw = localStorage.getItem(POS_KEY);
-      if (!raw) return defaultPosition();
-      const pos = JSON.parse(raw);
-      if (!pos || !Number.isFinite(pos.left) || !Number.isFinite(pos.top)) return defaultPosition();
-
-      const w = $panel.offsetWidth || 360;
-      const h = $panel.offsetHeight || 520;
-
-      const left = clamp(pos.left, 8, window.innerWidth - w - 8);
-      const top = clamp(pos.top, 8, window.innerHeight - h - 8);
-
-      $panel.style.left = left + "px";
-      $panel.style.top = top + "px";
-    } catch {
-      defaultPosition();
-    }
-  }
-
-  let open = false;
-  function openPanel() {
-    if (open) return;
-    open = true;
-    $panel.classList.add("open");
-    try { localStorage.setItem(OPEN_KEY, "1"); } catch {}
-    restorePosition();
-    setTimeout(() => $input?.focus(), 0);
-    scrollToBottom();
-  }
-  function closePanel() {
-    open = false;
-    $panel.classList.remove("open");
-    try { localStorage.setItem(OPEN_KEY, "0"); } catch {}
-    hideWebView();
-  }
-
-  $bubble.addEventListener("click", openPanel);
-  $close.addEventListener("click", closePanel);
-
-  // Restore open state
-  try {
-    const wasOpen = localStorage.getItem(OPEN_KEY) === "1";
-    if (!CFG.popup && (CFG.startOpen || wasOpen)) openPanel();
-  } catch {
-    if (!CFG.popup && CFG.startOpen) openPanel();
-  }
-
-  window.addEventListener("resize", () => {
-    if (!open || CFG.popup) return;
-    restorePosition();
-    savePosition();
-  });
-
-  // ---- resize handles ----
-  let rs = null;
-  function startResize(e, mode) {
-    rs = {
-      mode,
-      sx: e.clientX,
-      sy: e.clientY,
-      sw: $panel.offsetWidth,
-      sh: $panel.offsetHeight,
-      minW: 320,
-      maxW: Math.min(window.innerWidth - 40, 900),
-      minH: 360,
-      maxH: Math.min(window.innerHeight - 120, 900),
-      prevUserSelect: document.body.style.userSelect,
-    };
-    document.body.style.userSelect = "none";
-    window.addEventListener("pointermove", onResizeMove);
-    window.addEventListener("pointerup", endResize);
-  }
-
-  function onResizeMove(e) {
-    if (!rs) return;
-    const dx = e.clientX - rs.sx;
-    const dy = e.clientY - rs.sy;
-
-    if (rs.mode === "top" || rs.mode === "corner") {
-      $panel.style.height = clamp(rs.sh - dy, rs.minH, rs.maxH) + "px";
-    }
-    if (rs.mode === "left" || rs.mode === "corner") {
-      $panel.style.width = clamp(rs.sw - dx, rs.minW, rs.maxW) + "px";
-    }
-
-    if (!CFG.popup) {
-      const r = getPanelRect();
-      const w = r.width, h = r.height;
-      const newLeft = clamp(r.left, 8, window.innerWidth - w - 8);
-      const newTop = clamp(r.top, 8, window.innerHeight - h - 8);
-      $panel.style.left = newLeft + "px";
-      $panel.style.top = newTop + "px";
-      savePosition();
-    }
-  }
-
-  function endResize() {
-    if (!rs) return;
-    document.body.style.userSelect = rs.prevUserSelect || "";
-    window.removeEventListener("pointermove", onResizeMove);
-    window.removeEventListener("pointerup", endResize);
-    rs = null;
-    savePosition();
-  }
-
-  $handles.forEach((h) =>
-    h.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      h.setPointerCapture?.(e.pointerId);
-      startResize(e, h.dataset.resize);
-    }),
-  );
-
-  // ---- draggable header ----
-  let dragging = false;
-  let dragStartX = 0, dragStartY = 0;
-  let dragStartLeft = 0, dragStartTop = 0;
-
-  function isInteractiveInHeader(target) {
-    return !!target.closest("button, textarea, input, a, [role='button']");
-  }
-
-  if (CFG.draggable && !CFG.popup && $dragHandle) {
-    $dragHandle.addEventListener("pointerdown", (e) => {
-      if (!open) return;
-      if (isInteractiveInHeader(e.target)) return;
-
-      dragging = true;
-      $dragHandle.classList.add("dragging");
-
-      const r = getPanelRect();
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      dragStartLeft = r.left;
-      dragStartTop = r.top;
-
-      try { $dragHandle.setPointerCapture(e.pointerId); } catch {}
-      e.preventDefault();
-    });
-
-    $dragHandle.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-
-      const dx = e.clientX - dragStartX;
-      const dy = e.clientY - dragStartY;
-
-      const r = getPanelRect();
-      const w = r.width;
-      const h = r.height;
-
-      const maxLeft = window.innerWidth - w - 8;
-      const maxTop = window.innerHeight - h - 8;
-
-      const left = clamp(dragStartLeft + dx, 8, maxLeft);
-      const top = clamp(dragStartTop + dy, 8, maxTop);
-
-      $panel.style.left = left + "px";
-      $panel.style.top = top + "px";
-    });
-
-    function endDrag(e) {
-      if (!dragging) return;
-      dragging = false;
-      $dragHandle.classList.remove("dragging");
-      try { $dragHandle.releasePointerCapture(e.pointerId); } catch {}
-      savePosition();
-    }
-
-    $dragHandle.addEventListener("pointerup", endDrag);
-    $dragHandle.addEventListener("pointercancel", endDrag);
-  }
-
-  // ---- input / send ----
-  $send.addEventListener("click", sendFromInput);
-  $input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendFromInput();
-    }
-  });
-  $input.addEventListener("input", () => {
-    $input.style.height = "auto";
-    $input.style.height = Math.min($input.scrollHeight, 160) + "px";
-  });
-
-  function sendFromInput() {
-    const text = ($input.value || "").trim();
-    if (!text) return;
-    addMessage(text, "user");
-    $input.value = "";
-    $input.dispatchEvent(new Event("input"));
-    sendMessage(text);
-  }
-
-  function setThinking(on) {
-    $thinking.classList.toggle("show", !!on);
-    scrollToBottom();
-  }
-
-  function disableInput(on) {
-    $input.disabled = !!on;
-    $send.disabled = !!on;
-  }
-
-  // ---- messages ----
-  function addMessage(text, role = "bot", opts = {}) {
-    const div = document.createElement("div");
-    div.className = `msg ${role}`;
-    const clean = normalizeText(text);
-
-    if (role === "bot" && opts.stream) {
-      div.textContent = "";
-      $messages.appendChild(div);
-      scrollToBottom();
-      streamText(div, clean);
-    } else {
-      div.textContent = clean;
-      $messages.appendChild(div);
-      persistTranscript();
-      scrollToBottom();
-    }
-  }
-
-  function streamText(el, fullText) {
-    const words = fullText.split(/(\s+)/);
-    let i = 0;
-    const step = () => {
-      if (i >= words.length) {
-        persistTranscript();
-        return;
-      }
-      el.textContent += words[i++];
-      scrollToBottom();
-      setTimeout(step, 25);
-    };
-    step();
-  }
-
-  // ---- extract links from raw text ----
-  function extractLinksFromText(text) {
-    const out = [];
-    if (!text) return out;
-    const re = /\bhttps?:\/\/[^\s<>"')]+/gi;
-    const seen = new Set();
-    let m;
-    while ((m = re.exec(text))) {
-      const url = m[0];
-      if (seen.has(url)) continue;
-      seen.add(url);
-      let label = url.replace(/^https?:\/\//, "");
-      try { label = new URL(url).hostname.replace(/^www\./, ""); } catch {}
-      out.push({ label, url });
-    }
-    return out;
-  }
-
-  // ---- Webview overlay (Option 3) ----
-  let webviewCurrentUrl = null;
-
-  function showWebView(url) {
+  function showPreview(url) {
     const u = safeUrl(url);
     if (!u) return;
-
-    webviewCurrentUrl = u;
-    try { localStorage.setItem(WEBVIEW_KEY, u); } catch {}
-
+    $iframe.src = u;
     $wvUrl.textContent = u;
-    $wvUrl.title = u;
-
-    // Setting src last reduces flicker in some browsers
-    $wvFrame.src = "about:blank";
-    setTimeout(() => { $wvFrame.src = u; }, 0);
-
     $webview.classList.add("show");
+    addMsg("I’ve opened this in preview. You can continue browsing here or go back to chat.");
   }
 
-  function hideWebView() {
-    webviewCurrentUrl = null;
+  function hidePreview() {
     $webview.classList.remove("show");
-    // Optional: stop loading
-    try { $wvFrame.src = "about:blank"; } catch {}
+    $iframe.src = "about:blank";
   }
 
-  $wvBack.addEventListener("click", hideWebView);
-  $wvClose.addEventListener("click", hideWebView);
-  $wvNewTab.addEventListener("click", () => {
-    if (!webviewCurrentUrl) return;
-    try { window.open(webviewCurrentUrl, "_blank", "noopener,noreferrer"); } catch {
-      window.location.href = webviewCurrentUrl;
-    }
-  });
-
-  // ---- navigation behavior ----
-  function navigateUrl(url) {
-    const u = safeUrl(url);
-    if (!u) return;
-
-    const mode = CFG.linkBehavior;
-
-    if (mode === "same-tab") {
-      window.location.href = u;
-      return;
-    }
-
-    if (mode === "new-tab") {
-      try { window.open(u, "_blank", "noopener,noreferrer"); } catch { window.location.href = u; }
-      return;
-    }
-
-    if (mode === "popup") {
-      // If you ever want to restore the old behavior, you can add your old popup plumbing here.
-      // For now, keep it simple:
-      try { window.open(u, "_blank", "noopener,noreferrer"); } catch { window.location.href = u; }
-      return;
-    }
-
-    // Default: in-widget overlay
-    showWebView(u);
-  }
-
-  // ---- link buttons ----
-  function addLinks(links = []) {
+  /* ---------------- LINKS AS INTENTS ---------------- */
+  function addLinks(links) {
     $buttons.innerHTML = "";
-
-    if (!Array.isArray(links) || !links.length) {
-      persistButtons([]);
-      return;
-    }
-
-    links.forEach((l) => {
-      const url = l?.url || "#";
-      const u = safeUrl(url) || url;
-
-      const a = document.createElement("a");
-      a.className = "link-btn";
-      a.href = u;
-      a.title = u;
-      a.textContent = (l?.label || u).replace(/^https?:\/\//, "");
-
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        openPanel(); // ensure panel is open
-        navigateUrl(u);
-      });
-
-      $buttons.appendChild(a);
-      scrollToBottom();
+    links.forEach(l => {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.textContent = l.label;
+      b.onclick = () => {
+        $input.value = l.label;
+        showPreview(l.url);
+      };
+      $buttons.appendChild(b);
     });
-
-    persistButtons(links);
   }
 
-  // ---- server call ----
-  async function sendMessage(text) {
-    if (!CFG.endpoint) {
-      addMessage("Configuration error: missing endpoint.", "bot");
-      return;
-    }
-    setThinking(true);
-    disableInput(true);
+  /* ---------------- OPEN / CLOSE ---------------- */
+  $bubble.onclick = () => {
+    $panel.classList.add("open");
+    $panel.style.right = "20px";
+    $panel.style.bottom = "90px";
+  };
+  $close.onclick = () => {
+    hidePreview();
+    $panel.classList.remove("open");
+  };
 
-    try {
-      const res = await fetch(CFG.endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Chat-Id": CFG.chatId,
-        },
-        body: JSON.stringify({
-          message: text,
-          chatId: CFG.chatId,
-          lang: currentLang,
-          pageUrl: CFG.pageUrl,
-        }),
-        credentials: "omit",
-      });
+  shadow.querySelector(".wv-btn.back").onclick = hidePreview;
+  shadow.querySelector(".wv-btn.close").onclick = hidePreview;
+  shadow.querySelector(".wv-btn.open").onclick = () => {
+    window.open($iframe.src, "_blank");
+  };
 
-      const ct = (res.headers.get("content-type") || "").toLowerCase();
-      const raw = ct.includes("application/json") ? await res.json() : await res.text();
-      const payload = typeof raw === "string" ? tryParseJSON(raw) ?? raw : raw;
-      handleWebhookResponse(payload);
-    } catch (err) {
-      console.error("[ChatWidget] fetch error", err);
-      addMessage("Sorry, I couldn’t reach the server.", "bot");
-    } finally {
-      setThinking(false);
-      disableInput(false);
-      setTimeout(() => $input?.focus(), 0);
-    }
-  }
-
-  function extractAnswerFromMaybeJSON(s) {
-    if (typeof s !== "string") return s;
-    const parsed = tryParseJSON(s);
-    if (parsed && typeof parsed === "object" && typeof parsed.answer === "string") {
-      return parsed.answer;
-    }
-    return s;
-  }
-
-  function handleWebhookResponse(payload) {
-    try {
-      if (typeof payload === "string") {
-        const parsed = tryParseJSON(payload);
-        if (parsed) return handleWebhookResponse(parsed);
-
-        const safeText = extractAnswerFromMaybeJSON(payload);
-        addMessage(safeText, "bot", { stream: true });
-        addLinks([]);
-        return;
-      }
-
-      let text =
-        payload.answer ??
-        payload.output ??
-        payload.message ??
-        payload.text ??
-        "OK";
-
-      if (typeof text === "string") {
-        text = extractAnswerFromMaybeJSON(text);
-      } else {
-        text = "OK";
-      }
-
-      addMessage(text, "bot", { stream: true });
-
-      const links =
-        payload.links ||
-        (payload.rich && payload.rich.buttons) ||
-        extractLinksFromText(text);
-      addLinks(Array.isArray(links) ? links : []);
-
-      // Redirects: in-widget by default (Option 3)
-      const url = payload.redirect || (payload.rich && payload.rich.redirect);
-      if (url && typeof url === "string") {
-        openPanel();
-        navigateUrl(url);
-      }
-    } catch (e) {
-      console.warn("[ChatWidget] parse error; showing raw.");
-      addMessage(String(payload), "bot");
-      addLinks([]);
-    }
-  }
-
-  // ---- ESC behavior ----
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if ($webview.classList.contains("show")) {
-      hideWebView();
-      return;
-    }
-    if (open) closePanel();
-  });
-
-  // Optional: restore last in-widget URL when reopening (commented by default)
-  // You can enable this if you want a "continue browsing" feel.
-  // try {
-  //   const last = localStorage.getItem(WEBVIEW_KEY);
-  //   if (last) showWebView(last);
-  // } catch {}
+  /* ---------------- DEMO INIT ---------------- */
+  addMsg("Hi! How can I help?");
+  addLinks([
+    { label: "Show price history", url: "https://example.com" },
+    { label: "Is it shock resistant?", url: "https://example.com" },
+  ]);
 })();
