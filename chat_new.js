@@ -796,4 +796,82 @@
     } finally {
       setThinking(false);
       disableInput(false);
-      setTimeout(() => $
+      setTimeout(() => $input?.focus(), 0);
+    }
+  }
+
+  function extractAnswerFromMaybeJSON(s) {
+    if (typeof s !== "string") return s;
+    const parsed = tryParseJSON(s);
+    if (parsed && typeof parsed === "object" && typeof parsed.answer === "string") {
+      return parsed.answer;
+    }
+    return s;
+  }
+
+  function handleWebhookResponse(payload) {
+    try {
+      if (typeof payload === "string") {
+        const parsed = tryParseJSON(payload);
+        if (parsed) return handleWebhookResponse(parsed);
+
+        const safeText = extractAnswerFromMaybeJSON(payload);
+        addMessage(safeText, "bot", { stream: true });
+
+        // Optional: extract URLs from the text into buttons
+        if (CFG.autoExtractUrls) addLinks(extractLinksFromText(safeText));
+        return;
+      }
+
+      let text =
+        payload.answer ??
+        payload.output ??
+        payload.message ??
+        payload.text ??
+        "OK";
+
+      if (typeof text === "string") text = extractAnswerFromMaybeJSON(text);
+      else text = "OK";
+
+      addMessage(text, "bot", { stream: true });
+
+      // Buttons/URLs: backend-driven
+      const links =
+        payload.links ||
+        (payload.rich && payload.rich.buttons) ||
+        [];
+
+      if (Array.isArray(links) && links.length) {
+        addLinks(links);
+      } else if (CFG.autoExtractUrls) {
+        addLinks(extractLinksFromText(text));
+      } else {
+        clearButtons();
+      }
+
+      // Redirects open in preview
+      const url = payload.redirect || (payload.rich && payload.rich.redirect);
+      if (url && typeof url === "string") {
+        const u = safeUrl(url);
+        if (u) {
+          openPanel();
+          showWebView(u);
+        }
+      }
+    } catch (e) {
+      console.warn("[ChatWidget] parse error; showing raw.");
+      addMessage(String(payload), "bot");
+      clearButtons();
+    }
+  }
+
+  // ---- ESC ----
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if ($webview.classList.contains("show")) return hideWebView();
+    if (open) closePanel();
+  });
+
+  // ---- greet ----
+  addMessage("Hi! How can I help?", "bot");
+})();
