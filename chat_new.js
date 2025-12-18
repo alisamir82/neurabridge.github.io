@@ -12,6 +12,12 @@
     chatId: currentScript?.dataset.chatId || null,
     draggable: (currentScript?.dataset.draggable || "true").toLowerCase() !== "false",
     pageUrl: currentScript?.dataset.pageUrl || window.location.href,
+
+    // Show link buttons returned by backend (no hardcoded suggestions)
+    showLinkButtons: (currentScript?.dataset.showLinkButtons || "true").toLowerCase() !== "false",
+
+    // Auto-extract URLs from bot text into buttons
+    autoExtractUrls: (currentScript?.dataset.autoExtractUrls || "true").toLowerCase() !== "false",
   };
 
   // ---- IDs & keys ----
@@ -27,11 +33,11 @@
   const STORAGE_KEY = `chatWidget:transcript:${CFG.chatId}`;
   const OPEN_KEY = `chatWidget:open:${CFG.chatId}`;
   const POS_KEY = `chatWidget:pos:${CFG.chatId}:v1`;
+  const LANG_KEY = `chatWidget:lang:${CFG.chatId}`;
+  const LAST_PREVIEW_URL_KEY = `chatWidget:lastPreviewUrl:${CFG.chatId}`;
 
   // ---- language ----
-  const LANG_KEY = `chatWidget:lang:${CFG.chatId}`;
   const SUPPORTED_LANGS = ["en", "de", "fr"];
-
   let currentLang = (() => {
     try {
       const saved = localStorage.getItem(LANG_KEY);
@@ -92,6 +98,24 @@
     } catch {
       return null;
     }
+  }
+
+  function extractLinksFromText(text) {
+    const out = [];
+    if (!text) return out;
+    const re = /\bhttps?:\/\/[^\s<>"')]+/gi;
+    const seen = new Set();
+    let m;
+    while ((m = re.exec(text))) {
+      const url = m[0];
+      const u = safeUrl(url);
+      if (!u || seen.has(u)) continue;
+      seen.add(u);
+      let label = u.replace(/^https?:\/\//, "");
+      try { label = new URL(u).hostname.replace(/^www\./, ""); } catch {}
+      out.push({ label, url: u });
+    }
+    return out;
   }
 
   // ---- UI ----
@@ -202,8 +226,30 @@
       .msg.user{ margin-left:auto; background:${CFG.primary}; color:#ffffff; }
       .msg.bot{ background:${CFG.accent}; color:#111827; border:1px solid #e2e4ea; }
 
-      /* suggestions removed */
-      .buttons{ display:none !important; }
+      /* Link buttons area (only shown when there are buttons) */
+      .buttons{
+        display:none;
+        padding: 0 12px 8px;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .buttons.show{ display:flex; }
+      .link-btn{
+        display:inline-flex;
+        align-items:center;
+        border:1px solid rgba(17,24,39,.12);
+        background:#ffffff;
+        color:#111827;
+        border-radius:999px;
+        padding:8px 12px;
+        cursor:pointer;
+        font-size:12px;
+        max-width:100%;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+      }
+      .link-btn:hover{ background: rgba(0,0,0,.03); }
 
       .typing-indicator{
         display:none;
@@ -271,7 +317,7 @@
       }
       .send:disabled{ opacity:.6; cursor:not-allowed; }
 
-      /* Webview overlay (kept for redirect preview) */
+      /* Webview overlay */
       .webview{
         position:absolute;
         inset:0;
@@ -380,6 +426,7 @@
   const $bubble = shadow.querySelector(".bubble");
   const $panel = shadow.querySelector(".panel");
   const $messages = shadow.querySelector("[data-messages]");
+  const $buttons = shadow.querySelector("[data-buttons]");
   const $input = shadow.querySelector("[data-input]");
   const $send = shadow.querySelector("[data-send]");
   const $close = shadow.querySelector("[data-close]");
@@ -406,7 +453,12 @@
   });
   updateLanguageButtons();
 
-  // ---- transcript ----
+  function scrollToBottom() {
+    requestAnimationFrame(() => {
+      $messages.scrollTop = $messages.scrollHeight;
+    });
+  }
+
   function persistTranscript() {
     try {
       const arr = [];
@@ -418,12 +470,6 @@
       });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
     } catch {}
-  }
-
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
-      $messages.scrollTop = $messages.scrollHeight;
-    });
   }
 
   // ---- messages ----
@@ -460,13 +506,23 @@
     step();
   }
 
-  // ---- webview (for redirects only) ----
+  // ---- webview (Option 3) ----
   let webviewCurrentUrl = null;
 
   function showWebView(url) {
     const u = safeUrl(url);
     if (!u) return;
+
     webviewCurrentUrl = u;
+
+    // avoid repeating the "opened in preview" line for the same URL
+    let last = null;
+    try { last = localStorage.getItem(LAST_PREVIEW_URL_KEY); } catch {}
+    if (last !== u) {
+      addMessage("Opened in preview. You can continue browsing here or go back to chat.", "bot");
+      try { localStorage.setItem(LAST_PREVIEW_URL_KEY, u); } catch {}
+    }
+
     $wvUrl.textContent = u;
     $wvUrl.title = u;
     $wvFrame.src = "about:blank";
@@ -487,6 +543,44 @@
     try { window.open(webviewCurrentUrl, "_blank", "noopener,noreferrer"); }
     catch { window.location.href = webviewCurrentUrl; }
   });
+
+  // ---- link buttons rendering ----
+  function clearButtons() {
+    $buttons.innerHTML = "";
+    $buttons.classList.remove("show");
+  }
+
+  function addLinks(links = []) {
+    if (!CFG.showLinkButtons) return clearButtons();
+
+    const clean = (Array.isArray(links) ? links : [])
+      .map((l) => ({ label: (l?.label || "").trim(), url: safeUrl(l?.url || "") }))
+      .filter((l) => l.url);
+
+    if (!clean.length) return clearButtons();
+
+    $buttons.innerHTML = "";
+    $buttons.classList.add("show");
+
+    clean.forEach((l) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "link-btn";
+      btn.textContent = l.label || new URL(l.url).hostname.replace(/^www\./, "");
+      btn.title = l.url;
+
+      // Click opens in-widget preview (Option 3)
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        openPanel();
+        showWebView(l.url);
+      });
+
+      $buttons.appendChild(btn);
+    });
+
+    scrollToBottom();
+  }
 
   // ---- open/close + positioning ----
   function getPanelRect() { return $panel.getBoundingClientRect(); }
@@ -629,7 +723,7 @@
     $dragHandle.addEventListener("pointercancel", endDrag);
   }
 
-  // ---- send wiring (FIXED) ----
+  // ---- send wiring ----
   $send.addEventListener("click", (e) => {
     e.preventDefault();
     sendFromInput();
@@ -702,67 +796,4 @@
     } finally {
       setThinking(false);
       disableInput(false);
-      setTimeout(() => $input?.focus(), 0);
-    }
-  }
-
-  function extractAnswerFromMaybeJSON(s) {
-    if (typeof s !== "string") return s;
-    const parsed = tryParseJSON(s);
-    if (parsed && typeof parsed === "object" && typeof parsed.answer === "string") {
-      return parsed.answer;
-    }
-    return s;
-  }
-
-  function handleWebhookResponse(payload) {
-    try {
-      if (typeof payload === "string") {
-        const parsed = tryParseJSON(payload);
-        if (parsed) return handleWebhookResponse(parsed);
-
-        const safeText = extractAnswerFromMaybeJSON(payload);
-        addMessage(safeText, "bot", { stream: true });
-        return;
-      }
-
-      let text =
-        payload.answer ??
-        payload.output ??
-        payload.message ??
-        payload.text ??
-        "OK";
-
-      if (typeof text === "string") text = extractAnswerFromMaybeJSON(text);
-      else text = "OK";
-
-      addMessage(text, "bot", { stream: true });
-
-      // Suggestions removed: we do NOT render payload.links / rich.buttons
-
-      // Redirects still open in preview (Option 3)
-      const url = payload.redirect || (payload.rich && payload.rich.redirect);
-      if (url && typeof url === "string") {
-        const u = safeUrl(url);
-        if (u) {
-          openPanel();
-          showWebView(u);
-          addMessage("I’ve opened this in preview. You can continue browsing here or go back to chat.", "bot");
-        }
-      }
-    } catch (e) {
-      console.warn("[ChatWidget] parse error; showing raw.");
-      addMessage(String(payload), "bot");
-    }
-  }
-
-  // ---- ESC ----
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if ($webview.classList.contains("show")) return hideWebView();
-    if (open) closePanel();
-  });
-
-  // ---- greet ----
-  addMessage("Hi! How can I help?", "bot");
-})();
+      setTimeout(() => $
